@@ -9,6 +9,8 @@ export interface EngkitConfig {
   lang?: Lang;
   /** Project-relative path of each managed document, written by `engkit init`. */
   paths?: Partial<Record<DocKey, string>>;
+  /** Folder for `engkit prompt --save` (default: `prompts`). */
+  promptsDir?: string;
 }
 
 function readRaw(cwd: string): Record<string, unknown> {
@@ -28,14 +30,14 @@ function readRaw(cwd: string): Record<string, unknown> {
   return data as Record<string, unknown>;
 }
 
-function validatePath(key: string, value: unknown): string {
+function validatePath(key: string, value: unknown, prefix = "paths."): string {
   if (typeof value !== "string" || value.trim() === "") {
-    throw new Error(`Invalid ${CONFIG_FILE}: "paths.${key}" must be a non-empty string`);
+    throw new Error(`Invalid ${CONFIG_FILE}: "${prefix}${key}" must be a non-empty string`);
   }
   const normalized = path.posix.normalize(value);
   if (path.posix.isAbsolute(normalized) || normalized === ".." || normalized.startsWith("../") || value.includes("\\")) {
     throw new Error(
-      `Invalid ${CONFIG_FILE}: "paths.${key}" must be a relative path inside the project, with "/" separators`
+      `Invalid ${CONFIG_FILE}: "${prefix}${key}" must be a relative path inside the project, with "/" separators`
     );
   }
   return normalized;
@@ -66,6 +68,9 @@ export function loadConfig(cwd: string = process.cwd()): EngkitConfig {
     }
     config.paths = out;
   }
+
+  const promptsDir = data["promptsDir"];
+  if (promptsDir !== undefined) config.promptsDir = validatePath("promptsDir", promptsDir, "");
   return config;
 }
 

@@ -8,8 +8,8 @@ One phase = one branch = one PR. Status is updated in the PR that finishes each 
 |---|---|---|
 | 0 | **CLI base**: `engkit` skeleton (`--help`, `--version`, `--lang`, `.engkit.json`, es/en i18n), Jira tools migrated to `engkit jira report` / `engkit jira oncall`, `prepare` script, smoke tests, CI, `csv-parse` fix | Done |
 | 1 | **Base documents**: `engkit init`, `engkit new adr\|pendiente`, `engkit index` (ADR, BITACORA, CLAUDE.md/AGENTS.md, glossary, pending items, current design) | Done |
-| 2 | **Verifier**: `engkit check` (ADR immutability, dates, unique IDs, references, append-only log, owners, TODO fields, deleted ADRs), `engkit adr accept`, `engkit new adr --supersedes` | In review |
-| 3 | **Prompt builder**: `engkit prompt` (interactive, task presets, warnings, `checklists/ai-prompt.md` as source) | Planned |
+| 2 | **Verifier**: `engkit check` (ADR immutability, dates, unique IDs, references, append-only log, owners, TODO fields, deleted ADRs), `engkit adr accept`, `engkit new adr --supersedes` | Done |
+| 3 | **Prompt builder**: `engkit prompt` (guided and non-interactive, task presets, warnings, project links, secret detection, `checklists/{es,en}/ai-prompt.md` as source) | In review |
 | 4 | **Agent profile**: `engkit init --profile agent` (subagent template, Claude Code permissions and hooks) | Planned |
 | 5 | **Git workflow and checklists**: `engkit branch`, `engkit changelog`, `engkit env`; code review, DoD, system design and threat model checklists | Planned |
 | 6 | **Legacy profile**: business rules, defects, evidence sources, acceptance tests; extra `check` rules | Planned |
@@ -19,6 +19,8 @@ One phase = one branch = one PR. Status is updated in the PR that finishes each 
 | 10 | **The rest**: `engkit mock`, `engkit scaffold` | Planned |
 
 ## Decisions
+
+- `engkit prompt` uses `@clack/prompts` behind an `Asker` interface (small, native multi-line input). Generated prompts go to `prompts/`, git-ignored by default; a detected secret blocks the output unless `--allow-secrets`.
 
 - Frontmatter keys (`id`, `status`, `date`, `owner`, `source`, `supersedes`, `superseded_by`) and status values are English and identical in es and en; only bodies and headings are translated.
 - `engkit init` stores the path of every document in `.engkit.json`; other commands read paths from there, not from the language.

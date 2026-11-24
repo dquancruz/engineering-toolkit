@@ -1,0 +1,11 @@
+{
+  "preset": "bugfix",
+  "goal": "Corregir el error 500 en POST /orders cuando falta el campo items",
+  "context": "Solo ocurre con clientes móviles v1.",
+  "material": ["@adr:ADR-0001", "@pending:P-01", "src/orders/handler.ts"],
+  "limits": ["@claude", "No tocar el esquema de la base de datos"],
+  "autonomy": "Detenerse y preguntar si hay que cambiar la API pública.",
+  "done": "POST /orders sin items devuelve 400 y el test nuevo pasa",
+  "verify": "`npm test`",
+  "response": "Resumen de 3 líneas y tabla de archivos."
+}
