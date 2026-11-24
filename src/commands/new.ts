@@ -7,6 +7,10 @@ import { parseFrontmatter, setFrontmatterField } from "../docs/frontmatter.js";
 import { formatPendingId, nextPendingNumber } from "../docs/pending.js";
 import { readTemplate, type Lang } from "../i18n/index.js";
 import { render } from "../docs/render.js";
+import { resolveAdr } from "./adr.js";
+import { runIndex } from "./index-cmd.js";
+
+const OWNER_NOTE = 'note: no owner found (git config user.name is empty); owner is "TODO". Use --owner "<name>".';
 
 export const PENDING_TYPES = ["review", "question"] as const;
 export type PendingType = (typeof PENDING_TYPES)[number];
@@ -15,7 +19,12 @@ export type PendingType = (typeof PENDING_TYPES)[number];
  * `engkit new adr "<title>"`: creates the next ADR with status `proposed`.
  * Starts from the project's own ADR template when it still exists, else from the shipped one.
  */
-export function runNewAdr(title: string, lang: Lang, options: DocOptions = {}): string {
+export interface NewAdrOptions extends DocOptions {
+  /** ID of an accepted ADR that the new one replaces. */
+  supersedes?: string | undefined;
+}
+
+export function runNewAdr(title: string, lang: Lang, options: NewAdrOptions = {}): string {
   const cwd = options.cwd ?? process.cwd();
   const config = loadConfig(cwd);
   const adrDir = docPath(config, "adrDir");
@@ -24,6 +33,14 @@ export function runNewAdr(title: string, lang: Lang, options: DocOptions = {}): 
   const cleanTitle = title.trim();
   const slug = slugify(cleanTitle);
   if (slug === "") throw new Error("The ADR title must contain letters or numbers.");
+
+  // Validate the ADR to supersede before writing anything.
+  const old = options.supersedes !== undefined ? resolveAdr(cwd, options.supersedes) : null;
+  if (old && old.status !== "accepted") {
+    throw new Error(
+      `${old.id} is "${old.status}"; only an "accepted" ADR can be superseded (a "proposed" one can be edited directly).`
+    );
+  }
 
   const number = nextAdrNumber(path.join(cwd, adrDir));
   const id = `ADR-${formatAdrNumber(number)}`;
@@ -47,7 +64,7 @@ export function runNewAdr(title: string, lang: Lang, options: DocOptions = {}): 
   text = setFrontmatterField(text, "status", "proposed");
   text = setFrontmatterField(text, "date", date);
   text = setFrontmatterField(text, "owner", owner);
-  text = setFrontmatterField(text, "supersedes", "");
+  text = setFrontmatterField(text, "supersedes", old ? old.id : "");
   text = setFrontmatterField(text, "superseded_by", "");
   const heading = `# ${id}: ${cleanTitle}`;
   text = /^# .*$/m.test(text) ? text.replace(/^# .*$/m, () => heading) : `${text.trimEnd()}\n\n${heading}\n`;
@@ -57,6 +74,22 @@ export function runNewAdr(title: string, lang: Lang, options: DocOptions = {}): 
   fs.mkdirSync(path.dirname(abs), { recursive: true });
   fs.writeFileSync(abs, text, { encoding: "utf-8", flag: "wx" });
   console.log(`created  ${file}  (${id}, status: proposed)`);
+  if (owner === "TODO") console.log(OWNER_NOTE);
+
+  if (old) {
+    // Only status and superseded_by change in the old ADR; its date and body stay as they were.
+    try {
+      let oldText = setFrontmatterField(old.text, "status", "superseded");
+      oldText = setFrontmatterField(oldText, "superseded_by", id);
+      fs.writeFileSync(old.abs, oldText, "utf-8");
+    } catch (e) {
+      fs.rmSync(abs, { force: true });
+      throw e;
+    }
+    console.log(`updated  ${old.file}  (status: superseded, superseded_by: ${id})`);
+  }
+
+  runIndex(lang, options);
   return file;
 }
 
@@ -100,5 +133,6 @@ export function runNewPending(title: string | undefined, lang: Lang, options: Ne
   text = `${text.trimEnd()}\n\n${entry}`;
   fs.writeFileSync(abs, text, "utf-8");
   console.log(`added  ${id} to ${file}`);
+  if (owner === "TODO") console.log(OWNER_NOTE);
   return id;
 }

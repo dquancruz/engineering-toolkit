@@ -7,8 +7,8 @@ One phase = one branch = one PR. Status is updated in the PR that finishes each 
 | Phase | Scope | Status |
 |---|---|---|
 | 0 | **CLI base**: `engkit` skeleton (`--help`, `--version`, `--lang`, `.engkit.json`, es/en i18n), Jira tools migrated to `engkit jira report` / `engkit jira oncall`, `prepare` script, smoke tests, CI, `csv-parse` fix | Done |
-| 1 | **Base documents**: `engkit init`, `engkit new adr\|pendiente`, `engkit index` (ADR, BITACORA, CLAUDE.md/AGENTS.md, glossary, pending items, current design) | In review |
-| 2 | **Verifier**: `engkit check` (ADR immutability, dates, unique IDs, references, append-only log, owners) | Planned |
+| 1 | **Base documents**: `engkit init`, `engkit new adr\|pendiente`, `engkit index` (ADR, BITACORA, CLAUDE.md/AGENTS.md, glossary, pending items, current design) | Done |
+| 2 | **Verifier**: `engkit check` (ADR immutability, dates, unique IDs, references, append-only log, owners, TODO fields, deleted ADRs), `engkit adr accept`, `engkit new adr --supersedes` | In review |
 | 3 | **Prompt builder**: `engkit prompt` (interactive, task presets, warnings, `checklists/ai-prompt.md` as source) | Planned |
 | 4 | **Agent profile**: `engkit init --profile agent` (subagent template, Claude Code permissions and hooks) | Planned |
 | 5 | **Git workflow and checklists**: `engkit branch`, `engkit changelog`, `engkit env`; code review, DoD, system design and threat model checklists | Planned |
@@ -29,3 +29,7 @@ One phase = one branch = one PR. Status is updated in the PR that finishes each 
 - Not published to npm. Main install method: `npm i -g <URL of the .tgz attached to a GitHub Release>`, built by the `release.yml` workflow on `v*` tags. Alternatives: clone + `npm link`, and `npm i github:...` inside a project. `npm i -g github:...` does not complete with npm 11.20.0 (see README, Install).
 - JSON, type converter, regex and JWT utilities are a separate web app, not CLI commands.
 - AI features come last and read `ANTHROPIC_API_KEY`; without it they fail with a clear message.
+
+## Future ideas
+
+- **Auditable exceptions for `engkit check`.** Today an accepted ADR cannot be corrected in place (a typo needs a superseding ADR) and there is no way to silence a rule. Idea: an `exceptions` list in `.engkit.json`, each entry with the ADR/line ID, the commit it applies to and a reason, reported by `check` as a **warning** so exceptions stay visible.

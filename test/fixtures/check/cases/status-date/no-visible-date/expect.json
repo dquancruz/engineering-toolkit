@@ -1,0 +1,9 @@
+{
+  "errors": [
+    {
+      "rule": "status-date",
+      "file": "docs/glosario.md",
+      "line": 3
+    }
+  ]
+}

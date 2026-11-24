@@ -1,0 +1,9 @@
+{
+  "errors": [
+    {
+      "rule": "broken-ref",
+      "file": "docs/adr/0002-usar-redis.md",
+      "line": 7
+    }
+  ]
+}

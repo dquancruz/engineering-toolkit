@@ -1,0 +1,14 @@
+{
+  "errors": [
+    {
+      "rule": "supersede-coherence",
+      "file": "docs/adr/0001-usar-postgresql.md",
+      "line": 8
+    },
+    {
+      "rule": "supersede-coherence",
+      "file": "docs/adr/0002-usar-redis.md",
+      "line": 7
+    }
+  ]
+}

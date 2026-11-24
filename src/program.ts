@@ -2,6 +2,8 @@ import { Command, Option } from "commander";
 import { readFileSync } from "node:fs";
 import { loadConfig, resolveLang } from "./config.js";
 import { LANGS, type Lang } from "./i18n/index.js";
+import { runAdrAccept } from "./commands/adr.js";
+import { CheckSetupError, formatReport, runCheck } from "./commands/check.js";
 import { runIndex } from "./commands/index-cmd.js";
 import { PROFILES, runInit, type Profile } from "./commands/init.js";
 import { runJiraOncall } from "./commands/jira-oncall.js";
@@ -63,9 +65,18 @@ Examples:
     .description("Create the next ADR (status: proposed)")
     .argument("<title>", "title of the decision")
     .option("--owner <name>", "owner (default: git config user.name, else TODO)")
-    .addHelpText("after", `\nExample:\n  engkit new adr "Use PostgreSQL for storage"   → docs/adr/0001-use-postgresql-for-storage.md`)
-    .action((title: string, opts: { owner?: string }) => {
-      runNewAdr(title, ctx.lang, { owner: opts.owner });
+    .option("--supersedes <ID>", "accepted ADR that this one replaces (it becomes superseded)")
+    .addHelpText(
+      "after",
+      `
+Also regenerates the ADR index.
+
+Examples:
+  engkit new adr "Use PostgreSQL for storage"   → docs/adr/0001-use-postgresql-for-storage.md
+  engkit new adr "Move to MySQL" --supersedes ADR-0001`
+    )
+    .action((title: string, opts: { owner?: string; supersedes?: string }) => {
+      runNewAdr(title, ctx.lang, { owner: opts.owner, supersedes: opts.supersedes });
     });
 
   create
@@ -78,6 +89,61 @@ Examples:
     .addHelpText("after", `\nExample:\n  engkit new pendiente "Confirm retention period" --type question --owner "Jane Doe"`)
     .action((title: string | undefined, opts: { type: PendingType; owner?: string }) => {
       runNewPending(title, ctx.lang, { type: opts.type, owner: opts.owner });
+    });
+
+  const adr = program.command("adr").description("Change the state of an ADR");
+
+  adr
+    .command("accept")
+    .description("Move an ADR from proposed to accepted and set its date to today")
+    .argument("<ID>", "ADR-0003, 0003 or 3")
+    .addHelpText(
+      "after",
+      `
+Fails if the ADR is not "proposed" or its owner is TODO. Regenerates the ADR index.
+After the acceptance is committed, "engkit check" rejects any later change to the ADR
+except status -> superseded and adding superseded_by.
+
+Example:
+  engkit adr accept ADR-0003`
+    )
+    .action((id: string) => {
+      runAdrAccept(id, ctx.lang);
+    });
+
+  program
+    .command("check")
+    .description("Verify the project documents (ADR immutability, dates, IDs, references, log, pending items)")
+    .option("--json", "print the result as JSON")
+    .option("--strict", "treat warnings as errors (recommended in CI)")
+    .addHelpText(
+      "after",
+      `
+Rules: adr-immutable, status-date, unique-id, broken-ref, log-append-only, pending-owner,
+pending-entry, todo-field, frontmatter, supersede-coherence, index-stale (warning),
+adr-deleted (warning), git-history (warning), missing-doc (warning).
+
+The git-based rules need history: without git, with a shallow clone, or for changes not
+committed yet they report a warning instead of passing silently. In CI use
+"actions/checkout" with fetch-depth: 0 and run "engkit check --strict".
+
+Exit code: 0 no errors, 1 errors found, 2 the project could not be checked (run "engkit init").
+
+Examples:
+  engkit check
+  engkit check --json
+  engkit check --strict`
+    )
+    .action((opts: { json?: boolean; strict?: boolean }) => {
+      try {
+        const result = runCheck(ctx.lang, { strict: opts.strict === true });
+        console.log(opts.json ? JSON.stringify(result, null, 2) : formatReport(result));
+        process.exitCode = result.ok ? 0 : 1;
+      } catch (e) {
+        if (!(e instanceof CheckSetupError)) throw e;
+        console.error(e.message);
+        process.exitCode = 2;
+      }
     });
 
   program

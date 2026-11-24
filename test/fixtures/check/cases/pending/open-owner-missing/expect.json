@@ -1,0 +1,9 @@
+{
+  "errors": [
+    {
+      "rule": "pending-owner",
+      "file": "docs/pendientes.md",
+      "line": 19
+    }
+  ]
+}

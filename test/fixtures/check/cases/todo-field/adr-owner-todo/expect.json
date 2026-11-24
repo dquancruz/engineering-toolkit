@@ -1,0 +1,9 @@
+{
+  "errors": [
+    {
+      "rule": "todo-field",
+      "file": "docs/adr/0002-usar-redis.md",
+      "line": 5
+    }
+  ]
+}

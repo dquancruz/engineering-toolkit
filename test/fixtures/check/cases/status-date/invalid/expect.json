@@ -1,0 +1,9 @@
+{
+  "errors": [
+    {
+      "rule": "status-date",
+      "file": "docs/diseno-vigente.md",
+      "line": 4
+    }
+  ]
+}

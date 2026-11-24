@@ -1,0 +1,14 @@
+{
+  "errors": [
+    {
+      "rule": "unique-id",
+      "file": "docs/adr/0001-zeta.md",
+      "line": 1
+    },
+    {
+      "rule": "unique-id",
+      "file": "docs/adr/0001-zeta.md",
+      "line": 2
+    }
+  ]
+}

@@ -88,6 +88,16 @@ describe("templates", () => {
     }
   });
 
+  it("ship the log with no entries, only the title and an HTML comment", () => {
+    for (const lang of LANGS) {
+      const body = parseFrontmatter(render(readTemplate(lang, "log.md"), vars))!.body;
+      const withoutComment = body.replace(/<!--[\s\S]*?-->/g, "").trim();
+      expect(withoutComment, lang).toMatch(/^# \S+$/);
+      expect(body, lang).not.toMatch(/Nada por ahora|Nothing for now|\(ninguno\)|\(none\)/);
+      expect(body, lang).not.toContain(TODAY);
+    }
+  });
+
   it("keep the log free of a frontmatter date (append-only)", () => {
     for (const lang of LANGS) {
       const fm = parseFrontmatter(render(readTemplate(lang, "log.md"), vars))!.data;

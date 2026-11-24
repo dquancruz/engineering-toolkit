@@ -1,0 +1,9 @@
+{
+  "errors": [
+    {
+      "rule": "frontmatter",
+      "file": "CLAUDE.md",
+      "line": 1
+    }
+  ]
+}

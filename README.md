@@ -26,6 +26,7 @@ engineering-toolkit/
 │   ├── config.ts               .engkit.json
 │   ├── i18n/                   es/en support
 │   ├── docs/                   frontmatter, ADR and pending helpers
+│   ├── check/                  engkit check: project loader, git helpers and rules
 │   └── commands/               one module per command
 ├── templates/                  es/en document templates
 ├── test/                       vitest tests and fixtures
@@ -48,11 +49,11 @@ The CLI is not published to npm. `dist/` is not versioned, so releases ship a pr
 **Main method: install the tarball from a GitHub Release**
 
 ```bash
-npm i -g https://github.com/dquancruz/engineering-toolkit/releases/download/v0.1.0/engineering-toolkit-0.1.0.tgz
+npm i -g https://github.com/dquancruz/engineering-toolkit/releases/download/v0.2.0/engineering-toolkit-0.2.0.tgz
 engkit --help
 ```
 
-npm may print an `install-scripts` warning about `prepare`; it is harmless because the tarball already contains the built `dist/`. Replace `0.1.0` (in both places) with the version you want. Releases are listed at <https://github.com/dquancruz/engineering-toolkit/releases>. A release is created by pushing a `v*` tag; the workflow in `.github/workflows/release.yml` runs the tests, runs `npm pack` and attaches the `.tgz`. The tag must match the version in `package.json`.
+npm may print an `install-scripts` warning about `prepare`; it is harmless because the tarball already contains the built `dist/`. Replace `0.2.0` (in both places) with the version you want. Releases are listed at <https://github.com/dquancruz/engineering-toolkit/releases>. A release is created by pushing a `v*` tag; the workflow in `.github/workflows/release.yml` runs the tests, runs `npm pack` and attaches the `.tgz`. The tag must match the version in `package.json`.
 
 **Alternative: clone and link** (for development)
 
@@ -109,7 +110,7 @@ engkit --lang en init --owner "Jane Doe"
 | Document (es / en) | Purpose |
 |---|---|
 | `docs/adr/0000-plantilla.md` / `0000-template.md` | ADR template: context, decision, consequences, alternatives, sources |
-| `BITACORA.md` / `LOG.md` | Append-only log; each `## YYYY-MM-DD` entry separates verified from unverified |
+| `BITACORA.md` / `LOG.md` | Append-only log, created with no entries (only the title and an HTML comment with the instructions); each `## YYYY-MM-DD` entry separates verified from unverified |
 | `CLAUDE.md`, `AGENTS.md` | Rules and constraints for coding agents; `AGENTS.md` links to `CLAUDE.md` instead of duplicating it |
 | `docs/glosario.md` / `glossary.md` | Terms, each with source, date and owner |
 | `docs/pendientes.md` / `pending.md` | Open reviews and questions (`P-xx`), each with type, status and owner |
@@ -135,15 +136,68 @@ The templates are generic and follow a few principles: every fact carries a sour
 
 ### `engkit new adr "<title>"`
 
-Creates the next ADR, e.g. `docs/adr/0007-title-in-kebab-case.md`, with `status: proposed`. The number is the highest existing one plus one (the `0000` template does not count). It starts from the project's own ADR template when it exists. Accents and symbols are removed from the file name. `--owner "<name>"` as in `init`.
+Creates the next ADR, e.g. `docs/adr/0007-title-in-kebab-case.md`, with `status: proposed`. The number is the highest existing one plus one (the `0000` template does not count). It starts from the project's own ADR template when it exists. Accents and symbols are removed from the file name. `--owner "<name>"` as in `init`. It also regenerates the ADR index.
+
+`--supersedes <ID>` (e.g. `ADR-0003`) creates the new ADR with `supersedes: ADR-0003` and marks the old one `status: superseded` with `superseded_by: <new ADR>`. Nothing else in the old ADR changes (not even its `date`). Only an `accepted` ADR can be superseded; nothing is written if it is not.
 
 ### `engkit new pendiente [title]` (alias `new pending`)
 
 Appends an entry with the next ID (`P-01` ... `P-99`, `P-100`, ...) to the pending file and refreshes its date. Options: `--type review|question` (default `question`), `--owner "<name>"`.
 
+### `engkit adr accept <ID>`
+
+Moves an ADR from `proposed` to `accepted` and sets its `date` to today. `<ID>` can be `ADR-0003`, `0003` or `3`. It fails if the ADR is not `proposed`, or if its `owner` is `TODO` or empty (`check` would reject it). It regenerates the ADR index.
+
+After the acceptance is **committed**, the ADR is immutable: `engkit check` allows only `status: accepted` → `superseded` and adding `superseded_by` (use `engkit new adr ... --supersedes`). Any other change is an error.
+
 ### `engkit index`
 
-Regenerates the ADR index (number, title, status, date, supersedes / superseded by). It is a generated file and says so in its header: do not edit it.
+Regenerates the ADR index (number, title, status, date, supersedes / superseded by). It is a generated file and says so in its header: do not edit it. `new adr` and `adr accept` run it for you; `check` warns (`index-stale`) when it is out of date.
+
+### `engkit check [--json] [--strict]`
+
+Verifies the project documents. Output is one line per finding, `file:line  severity  [rule]  message`, and exits **0** without errors, **1** with errors and **2** when the project cannot be checked (no `.engkit.json`: run `engkit init`). `--json` prints `{ ok, errors[], warnings[], summary }`. `--strict` turns warnings into errors.
+
+| Rule | Severity | What it verifies |
+|---|---|---|
+| `adr-immutable` | error | After acceptance, an ADR only changes `status` → `superseded` and gains `superseded_by`. Any other change (body, `date`, `owner`, `id`, `supersedes`, going back to `proposed`...) is an error |
+| `status-date` | error | Status documents and ADRs have a real `date` (YYYY-MM-DD); the visible "status as of" date matches the frontmatter |
+| `unique-id` | error | No duplicate ADR numbers/ids, `P-xx` or document ids; an ADR's id matches its file number |
+| `broken-ref` | error | Every `ADR-xxxx` and `P-xx` reference (body, `supersedes`, `superseded_by`) points to something that exists. Code blocks, inline code and HTML comments are ignored |
+| `log-append-only` | error | In every version of the log, the earlier lines are unchanged: lines are only added at the end |
+| `pending-owner` | error | Every `open` pending item has an owner |
+| `pending-entry` | error | Pending items have a valid `type`, `status` and `date` |
+| `todo-field` | error | `owner` and `date` are present and not `TODO` |
+| `frontmatter` | error | Every managed document has frontmatter with an `id` (and an ADR has a valid `status`) |
+| `supersede-coherence` | error | `supersedes`, `superseded_by` and `status: superseded` agree with each other; a superseded ADR has `superseded_by` |
+| `adr-deleted` | warning | An ADR file was deleted from the ADR folder (found with `git log --diff-filter=D`) |
+| `index-stale` | warning | The generated ADR index does not match the ADRs |
+| `git-history` | warning | The git-based rules could not run or cannot be trusted (see below) |
+| `missing-doc` | warning | A document configured in `.engkit.json` does not exist |
+
+**How the git rules work.** For each ADR, `check` lists the commits that touched the file (following renames) and finds the first one where `status` is `accepted`. From there, every step (commit to commit, and finally the working tree against `HEAD`) must be an allowed change, so an edit that is later reverted is still caught, and an uncommitted edit is caught before you commit. The log is checked the same way: each version must start with all the lines of the previous one. Commit order is used, not dates.
+
+**When there is no usable history,** the rules never pass silently:
+
+| Situation | Result |
+|---|---|
+| Not a git repository, or no `git` | `git-history` warning; `adr-immutable`, `log-append-only` and `adr-deleted` are skipped, the rest runs |
+| ADR accepted only in the working tree (not committed yet) | `adr-immutable` warning: it cannot be verified until the acceptance is committed |
+| Untracked or never-committed log | nothing to compare yet |
+| Shallow clone | `git-history` warning: the history is incomplete. In CI use `fetch-depth: 0` |
+| `--strict` | all of the above become errors |
+
+Known limits: history is assumed to be mostly linear, and an accepted ADR cannot be corrected in place (a typo needs a superseding ADR). With no owner (`git config user.name` empty and no `--owner`), documents are created with `owner: TODO` and `check` fails until it is set.
+
+Use it in CI:
+
+```yaml
+- uses: actions/checkout@v4
+  with:
+    fetch-depth: 0        # full history, needed by adr-immutable and log-append-only
+- run: npm i -g https://github.com/dquancruz/engineering-toolkit/releases/download/v0.2.0/engineering-toolkit-0.2.0.tgz
+- run: engkit check --strict
+```
 
 ### `engkit jira report <csv> [person]`
 

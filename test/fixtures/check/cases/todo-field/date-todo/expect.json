@@ -1,0 +1,9 @@
+{
+  "errors": [
+    {
+      "rule": "todo-field",
+      "file": "docs/glosario.md",
+      "line": 3
+    }
+  ]
+}

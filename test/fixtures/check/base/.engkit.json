@@ -1,0 +1,14 @@
+{
+  "lang": "es",
+  "paths": {
+    "adrDir": "docs/adr",
+    "adrTemplate": "docs/adr/0000-plantilla.md",
+    "log": "BITACORA.md",
+    "claude": "CLAUDE.md",
+    "agents": "AGENTS.md",
+    "glossary": "docs/glosario.md",
+    "pending": "docs/pendientes.md",
+    "design": "docs/diseno-vigente.md",
+    "decisions": "docs/DECISIONES.md"
+  }
+}

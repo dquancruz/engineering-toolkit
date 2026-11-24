@@ -26,10 +26,16 @@ const TEXT = {
 const escapeCell = (s: string) => s.replace(/\|/g, "\\|");
 
 /** Builds the DECISIONS index. `supersededBy` also comes from other ADRs that declare `supersedes`. */
-export function generateIndex(lang: Lang, adrDirAbs: string, paths: IndexPaths, date: string): string {
+export function generateIndex(
+  lang: Lang,
+  adrDirAbs: string,
+  paths: IndexPaths,
+  date: string,
+  onWarning: (message: string) => void = (m) => console.error(`warning: ${m}`)
+): string {
   const text = TEXT[lang];
   const { adrs, warnings } = listAdrs(adrDirAbs);
-  for (const w of warnings) console.error(`warning: ${w}`);
+  for (const w of warnings) onWarning(w);
 
   const reverse = new Map<string, string>();
   for (const adr of adrs) if (adr.supersedes) reverse.set(adr.supersedes, adr.id);
