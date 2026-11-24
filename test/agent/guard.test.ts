@@ -214,6 +214,6 @@ describe("engkit-guard: failing closed", () => {
   });
 
   it("has a version header", () => {
-    expect(fs.readFileSync(guardScript, "utf-8").split("\n")[0]).toMatch(/^\/\/ engkit-guard v\d+$/);
+    expect(fs.readFileSync(guardScript, "utf-8").split(/\r?\n/)[0]).toMatch(/^\/\/ engkit-guard v\d+$/);
   });
 });

@@ -6,7 +6,8 @@ import { runInitProfiles, parseProfiles } from "../../src/commands/init.js";
 import { loadConfig } from "../../src/config.js";
 import { tmpDir } from "../helpers.js";
 
-const read = (dir: string, f: string) => fs.readFileSync(path.join(dir, f), "utf-8");
+// git may check files out with CRLF on Windows
+const read = (dir: string, f: string) => fs.readFileSync(path.join(dir, f), "utf-8").replace(/\r\n/g, "\n");
 const exists = (dir: string, f: string) => fs.existsSync(path.join(dir, f));
 const install = async (dir: string, options: Parameters<typeof installAgentProfile>[1] = {}, lang: "es" | "en" = "en") => {
   const lines: string[] = [];
