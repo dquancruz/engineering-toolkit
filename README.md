@@ -42,21 +42,33 @@ Requires **Node.js 22 or newer**.
 
 ### Install
 
-From GitHub (not published to npm). The `prepare` script compiles the TypeScript during install:
+The CLI is not published to npm. `dist/` is not versioned, so the `prepare` script compiles the TypeScript when the package is installed from a git checkout.
 
-```bash
-npm i -g github:dquancruz/engineering-toolkit
-engkit --help
-```
-
-For development:
+**Option 1: clone and link** (verified, recommended)
 
 ```bash
 git clone git@github.com:dquancruz/engineering-toolkit.git
 cd engineering-toolkit
 npm ci          # also builds dist/ via the prepare script
 npm link        # exposes `engkit` on your PATH
-npm test        # builds, then runs vitest
+engkit --help
+```
+
+**Option 2: install a packed tarball** (verified)
+
+```bash
+npm pack                                   # builds dist/ and writes engineering-toolkit-<version>.tgz
+npm i -g ./engineering-toolkit-<version>.tgz
+```
+
+**Option 3: `npm i -g github:dquancruz/engineering-toolkit`** (known problem)
+
+With npm 11.20.0, a global install of *any* git package that has a `prepare` script ends with a dangling symlink and no `engkit` binary: npm blocks dependency install scripts by default (see `npm help install-scripts`), and the global git install flow does not complete. It was reproduced with a minimal package that only has `prepare`, so it is not specific to this repo. A non-global install (`npm i github:dquancruz/engineering-toolkit` inside a project) does build `dist/` and works.
+
+Development:
+
+```bash
+npm test             # builds, then runs vitest
 npx tsc --noEmit
 ```
 
