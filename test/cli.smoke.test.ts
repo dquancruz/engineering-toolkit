@@ -59,4 +59,26 @@ describe("engkit CLI smoke", () => {
     expect(r.status).toBe(0);
     expect(fs.readdirSync(path.join(dir, "out"))[0]).toMatch(/^oncall_Jane_Doe_/);
   });
+
+  it("has help for init, new adr, new pendiente and index", () => {
+    for (const args of [["init"], ["new", "adr"], ["new", "pendiente"], ["index"]]) {
+      const r = run([...args, "--help"]);
+      expect(r.status, args.join(" ")).toBe(0);
+      expect(r.stdout).toContain("Usage: engkit");
+    }
+  });
+
+  it("runs init -> new adr -> new pendiente -> index end to end (en)", () => {
+    const dir = tmpDir();
+    const r = run(["--lang", "en", "init", "--owner", "Jane Doe"], dir);
+    expect(r.status).toBe(0);
+    expect(JSON.parse(fs.readFileSync(path.join(dir, ".engkit.json"), "utf-8")).lang).toBe("en");
+    // the stored language and paths are used from now on, without --lang
+    expect(run(["new", "adr", "Use Postgres", "--owner", "Jane Doe"], dir).status).toBe(0);
+    expect(run(["new", "pending", "Check retention"], dir).status).toBe(0);
+    expect(run(["index"], dir).status).toBe(0);
+    const index = fs.readFileSync(path.join(dir, "docs/DECISIONS.md"), "utf-8");
+    expect(index).toContain("0001-use-postgres.md");
+    expect(fs.readFileSync(path.join(dir, "docs/pending.md"), "utf-8")).toContain("### P-01: Check retention");
+  });
 });

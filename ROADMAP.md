@@ -6,8 +6,8 @@ One phase = one branch = one PR. Status is updated in the PR that finishes each 
 
 | Phase | Scope | Status |
 |---|---|---|
-| 0 | **CLI base**: `engkit` skeleton (`--help`, `--version`, `--lang`, `.engkit.json`, es/en i18n), Jira tools migrated to `engkit jira report` / `engkit jira oncall`, `prepare` script, smoke tests, CI, `csv-parse` fix | In review |
-| 1 | **Base documents**: `engkit init`, `engkit new adr\|pendiente`, `engkit index` (ADR, BITACORA, CLAUDE.md/AGENTS.md, glossary, pending items, current design) | Planned |
+| 0 | **CLI base**: `engkit` skeleton (`--help`, `--version`, `--lang`, `.engkit.json`, es/en i18n), Jira tools migrated to `engkit jira report` / `engkit jira oncall`, `prepare` script, smoke tests, CI, `csv-parse` fix | Done |
+| 1 | **Base documents**: `engkit init`, `engkit new adr\|pendiente`, `engkit index` (ADR, BITACORA, CLAUDE.md/AGENTS.md, glossary, pending items, current design) | In review |
 | 2 | **Verifier**: `engkit check` (ADR immutability, dates, unique IDs, references, append-only log, owners) | Planned |
 | 3 | **Prompt builder**: `engkit prompt` (interactive, task presets, warnings, `checklists/ai-prompt.md` as source) | Planned |
 | 4 | **Agent profile**: `engkit init --profile agent` (subagent template, Claude Code permissions and hooks) | Planned |
@@ -19,6 +19,10 @@ One phase = one branch = one PR. Status is updated in the PR that finishes each 
 | 10 | **The rest**: `engkit mock`, `engkit scaffold` | Planned |
 
 ## Decisions
+
+- Frontmatter keys (`id`, `status`, `date`, `owner`, `source`, `supersedes`, `superseded_by`) and status values are English and identical in es and en; only bodies and headings are translated.
+- `engkit init` stores the path of every document in `.engkit.json`; other commands read paths from there, not from the language.
+- The log has no `date` in its frontmatter (entries carry their own date), so appending never edits existing lines.
 
 - One CLI with subcommands; the Jira tools live inside it.
 - Templates and checklists in Spanish and English, selected with `--lang es|en` (default `es`); `engkit init` stores the language in `.engkit.json`.

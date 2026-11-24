@@ -2,8 +2,11 @@ import { Command, Option } from "commander";
 import { readFileSync } from "node:fs";
 import { loadConfig, resolveLang } from "./config.js";
 import { LANGS, type Lang } from "./i18n/index.js";
+import { runIndex } from "./commands/index-cmd.js";
+import { PROFILES, runInit, type Profile } from "./commands/init.js";
 import { runJiraOncall } from "./commands/jira-oncall.js";
 import { runJiraReport } from "./commands/jira-report.js";
+import { PENDING_TYPES, runNewAdr, runNewPending, type PendingType } from "./commands/new.js";
 
 function readVersion(): string {
   const pkg = new URL("../package.json", import.meta.url);
@@ -32,6 +35,58 @@ export function createProgram(): Command {
     const flag = thisCommand.opts<{ lang?: string }>().lang;
     ctx.lang = resolveLang(flag, loadConfig());
   });
+
+  program
+    .command("init")
+    .description("Create the base documents (ADR template, log, CLAUDE.md, AGENTS.md, glossary, pending, design)")
+    .addOption(new Option("--profile <profile>", "document profile").choices([...PROFILES]).default("base"))
+    .option("--owner <name>", "owner written in the documents (default: git config user.name, else TODO)")
+    .addHelpText(
+      "after",
+      `
+Existing files are never overwritten: they are reported and skipped.
+The language and the path of each document are stored in .engkit.json,
+and "engkit new" and "engkit index" read the paths from there.
+
+Examples:
+  engkit init
+  engkit init --lang en --owner "Jane Doe"`
+    )
+    .action((opts: { profile: Profile; owner?: string }) => {
+      runInit(ctx.lang, { profile: opts.profile, owner: opts.owner });
+    });
+
+  const create = program.command("new").description("Create a new document from a template");
+
+  create
+    .command("adr")
+    .description("Create the next ADR (status: proposed)")
+    .argument("<title>", "title of the decision")
+    .option("--owner <name>", "owner (default: git config user.name, else TODO)")
+    .addHelpText("after", `\nExample:\n  engkit new adr "Use PostgreSQL for storage"   → docs/adr/0001-use-postgresql-for-storage.md`)
+    .action((title: string, opts: { owner?: string }) => {
+      runNewAdr(title, ctx.lang, { owner: opts.owner });
+    });
+
+  create
+    .command("pendiente")
+    .alias("pending")
+    .description("Add an entry with the next P-xx ID to the pending file")
+    .argument("[title]", "short title of the item")
+    .addOption(new Option("--type <type>", "kind of item").choices([...PENDING_TYPES]).default("question"))
+    .option("--owner <name>", "owner (default: git config user.name, else TODO)")
+    .addHelpText("after", `\nExample:\n  engkit new pendiente "Confirm retention period" --type question --owner "Jane Doe"`)
+    .action((title: string | undefined, opts: { type: PendingType; owner?: string }) => {
+      runNewPending(title, ctx.lang, { type: opts.type, owner: opts.owner });
+    });
+
+  program
+    .command("index")
+    .description("Generate the ADR index (a generated file; do not edit it)")
+    .addHelpText("after", "\nWrites the file stored as paths.decisions in .engkit.json (docs/DECISIONES.md or docs/DECISIONS.md).")
+    .action(() => {
+      runIndex(ctx.lang);
+    });
 
   const jira = program.command("jira").description("Jira defect tools");
 
