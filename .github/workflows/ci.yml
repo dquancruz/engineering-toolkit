@@ -22,3 +22,20 @@ jobs:
       - run: npx tsc --noEmit
       - run: npm test
       - run: npm audit --audit-level=moderate
+
+  # The agent guards run on the developer's machine, so they are tested on Windows and macOS too.
+  # The rest of the suite still assumes Linux (see ROADMAP, "Future ideas").
+  agent-portability:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npx vitest run test/agent

@@ -7,13 +7,39 @@ import { yamlScalar } from "../docs/frontmatter.js";
 import { render } from "../docs/render.js";
 import type { Lang } from "../i18n/index.js";
 import { readTemplate } from "../i18n/index.js";
+import { AGENT_CHOICES, installAgentProfile, type AgentChoice } from "../agent/install.js";
 import { generateIndex } from "./index-cmd.js";
 
-export const PROFILES = ["base"] as const;
+export { AGENT_CHOICES };
+
+export const PROFILES = ["base", "agent"] as const;
 export type Profile = (typeof PROFILES)[number];
 
+/** Parses `--profile base,agent`. */
+export function parseProfiles(value: string): Profile[] {
+  const out: Profile[] = [];
+  for (const part of value.split(",").map((p) => p.trim()).filter((p) => p !== "")) {
+    if (!(PROFILES as readonly string[]).includes(part)) {
+      throw new Error(`Invalid profile "${part}". Use: ${PROFILES.join(", ")} (combine with commas, e.g. base,agent).`);
+    }
+    if (!out.includes(part as Profile)) out.push(part as Profile);
+  }
+  if (out.length === 0) throw new Error(`Empty --profile. Use: ${PROFILES.join(", ")}.`);
+  return out;
+}
+
 export interface InitOptions extends DocOptions {
-  profile?: Profile;
+  profiles?: Profile[];
+  /** Print what would be created and write nothing. */
+  dryRun?: boolean;
+}
+
+export interface InitProfilesOptions extends InitOptions {
+  agent?: AgentChoice;
+  yes?: boolean;
+  updateGuard?: boolean;
+  interactive?: boolean;
+  confirm?: (message: string) => Promise<boolean>;
 }
 
 export interface InitResult {
@@ -52,13 +78,16 @@ export function runInit(lang: Lang, options: InitOptions = {}): InitResult {
   const existing = loadConfig(cwd);
   const paths = { ...DEFAULT_PATHS[lang], ...existing.paths } as DocPaths;
 
+  const dryRun = options.dryRun === true;
   const hadConfig = fs.existsSync(path.join(cwd, CONFIG_FILE));
-  updateConfigFile(cwd, (raw) => ({
-    ...raw,
-    lang: raw["lang"] ?? lang,
-    paths: Object.fromEntries(DOC_KEYS.map((k) => [k, paths[k]])),
-  }));
-  console.log(`${hadConfig ? "updated" : "created"}  ${CONFIG_FILE}`);
+  if (!dryRun) {
+    updateConfigFile(cwd, (raw) => ({
+      ...raw,
+      lang: raw["lang"] ?? lang,
+      paths: Object.fromEntries(DOC_KEYS.map((k) => [k, paths[k]])),
+    }));
+  }
+  console.log(`${dryRun ? "would " : ""}${hadConfig ? "update" : "create"}  ${CONFIG_FILE}`);
 
   const write = (file: string, content: string) => {
     const abs = path.join(cwd, file);
@@ -67,13 +96,15 @@ export function runInit(lang: Lang, options: InitOptions = {}): InitResult {
       console.log(`skipped  ${file} (already exists)`);
       return;
     }
-    fs.mkdirSync(path.dirname(abs), { recursive: true });
-    fs.writeFileSync(abs, content, "utf-8");
+    if (!dryRun) {
+      fs.mkdirSync(path.dirname(abs), { recursive: true });
+      fs.writeFileSync(abs, content, "utf-8");
+    }
     result.created.push(file);
-    console.log(`created  ${file}`);
+    console.log(`${dryRun ? "would create" : "created"}  ${file}`);
   };
 
-  fs.mkdirSync(path.join(cwd, paths.adrDir), { recursive: true });
+  if (!dryRun) fs.mkdirSync(path.join(cwd, paths.adrDir), { recursive: true });
   for (const { key, template } of TEMPLATE_DOCS) {
     const file = paths[key];
     write(file, render(readTemplate(lang, template), templateVars(file, paths, owner, date)));
@@ -81,7 +112,7 @@ export function runInit(lang: Lang, options: InitOptions = {}): InitResult {
 
   // Generated ADR index (empty at first). Never overwrites an existing one.
   if (!fs.existsSync(path.join(cwd, paths.decisions))) {
-    write(paths.decisions, generateIndex(lang, path.join(cwd, paths.adrDir), paths, date));
+    write(paths.decisions, dryRun ? "" : generateIndex(lang, path.join(cwd, paths.adrDir), paths, date));
   } else {
     result.skipped.push(paths.decisions);
     console.log(`skipped  ${paths.decisions} (already exists)`);
@@ -91,4 +122,27 @@ export function runInit(lang: Lang, options: InitOptions = {}): InitResult {
     console.log('note: no owner found (git config user.name is empty); fields say "TODO". Use --owner "<name>".');
   }
   return result;
+}
+
+/**
+ * Runs the selected profiles. `base` creates the documents; `agent` adds the subagents and the Claude Code
+ * guards and is additive (it never touches the base documents). Returns the exit code.
+ */
+export async function runInitProfiles(lang: Lang, options: InitProfilesOptions = {}): Promise<number> {
+  const profiles = options.profiles ?? ["base"];
+  let code = 0;
+  if (profiles.includes("base")) runInit(lang, options);
+  if (profiles.includes("agent")) {
+    const result = await installAgentProfile(lang, {
+      ...(options.cwd !== undefined ? { cwd: options.cwd } : {}),
+      ...(options.agent !== undefined ? { agent: options.agent } : {}),
+      ...(options.yes !== undefined ? { yes: options.yes } : {}),
+      ...(options.dryRun !== undefined ? { dryRun: options.dryRun } : {}),
+      ...(options.updateGuard !== undefined ? { updateGuard: options.updateGuard } : {}),
+      ...(options.interactive !== undefined ? { interactive: options.interactive } : {}),
+      ...(options.confirm !== undefined ? { confirm: options.confirm } : {}),
+    });
+    code = result.code;
+  }
+  return code;
 }

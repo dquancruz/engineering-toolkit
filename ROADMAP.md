@@ -9,8 +9,8 @@ One phase = one branch = one PR. Status is updated in the PR that finishes each 
 | 0 | **CLI base**: `engkit` skeleton (`--help`, `--version`, `--lang`, `.engkit.json`, es/en i18n), Jira tools migrated to `engkit jira report` / `engkit jira oncall`, `prepare` script, smoke tests, CI, `csv-parse` fix | Done |
 | 1 | **Base documents**: `engkit init`, `engkit new adr\|pendiente`, `engkit index` (ADR, BITACORA, CLAUDE.md/AGENTS.md, glossary, pending items, current design) | Done |
 | 2 | **Verifier**: `engkit check` (ADR immutability, dates, unique IDs, references, append-only log, owners, TODO fields, deleted ADRs), `engkit adr accept`, `engkit new adr --supersedes` | Done |
-| 3 | **Prompt builder**: `engkit prompt` (guided and non-interactive, task presets, warnings, project links, secret detection, `checklists/{es,en}/ai-prompt.md` as source) | In review |
-| 4 | **Agent profile**: `engkit init --profile agent` (subagent template, Claude Code permissions and hooks) | Planned |
+| 3 | **Prompt builder**: `engkit prompt` (guided and non-interactive, task presets, warnings, project links, secret detection, `checklists/{es,en}/ai-prompt.md` as source) | Done |
+| 4 | **Agent profile**: `engkit init --profile agent` (reviewer and builder subagents, Claude Code permissions and a Node guard hook, settings merge with diff), `engkit agent test-guards`, `protectedBranches` | In review |
 | 5 | **Git workflow and checklists**: `engkit branch`, `engkit changelog`, `engkit env`; code review, DoD, system design and threat model checklists | Planned |
 | 6 | **Legacy profile**: business rules, defects, evidence sources, acceptance tests; extra `check` rules | Planned |
 | 7 | **Rebuild profile**: non-functional requirements, rebuild plan, `engkit requirements`, `engkit testplan` | Planned |
@@ -19,6 +19,8 @@ One phase = one branch = one PR. Status is updated in the PR that finishes each 
 | 10 | **The rest**: `engkit mock`, `engkit scaffold` | Planned |
 
 ## Decisions
+
+- The agent guards are one dependency-free Node script (`.claude/hooks/engkit-guard.mjs`) registered in exec form with `"onFailure": "block"`, so one entry works on Linux, macOS and Windows and fails closed. Deny rules in `permissions.deny` back it up for exact cases; `.env*` patterns and branch checks live only in the hook. Protected branches are `protectedBranches` in `.engkit.json` (default `main`, `master`; `*` wildcard). `engkit init` merges into an existing `.claude/settings.json` showing a diff first and never edits `CLAUDE.md` or `AGENTS.md`.
 
 - `engkit prompt` uses `@clack/prompts` behind an `Asker` interface (small, native multi-line input). Generated prompts go to `prompts/`, git-ignored by default; a detected secret blocks the output unless `--allow-secrets`.
 
@@ -33,5 +35,7 @@ One phase = one branch = one PR. Status is updated in the PR that finishes each 
 - AI features come last and read `ANTHROPIC_API_KEY`; without it they fail with a clear message.
 
 ## Future ideas
+
+- **Make the tests that assume Linux portable.** CI runs the whole suite on Ubuntu only; Windows and macOS run just `test/agent` (the guard is the part that runs on every developer machine). Several other tests assume Linux (for example `/dev/null`, path separators, `npm` resolution in `test/global-setup.ts`). Make them portable and run the full suite on all three systems.
 
 - **Auditable exceptions for `engkit check`.** Today an accepted ADR cannot be corrected in place (a typo needs a superseding ADR) and there is no way to silence a rule. Idea: an `exceptions` list in `.engkit.json`, each entry with the ADR/line ID, the commit it applies to and a reason, reported by `check` as a **warning** so exceptions stay visible.

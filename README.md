@@ -28,8 +28,9 @@ engineering-toolkit/
 │   ├── docs/                   frontmatter, ADR and pending helpers
 │   ├── check/                  engkit check: project loader, git helpers and rules
 │   ├── prompt/                 engkit prompt: checklist parser, warnings, secrets, interactive flow
+│   ├── agent/                  agent profile: settings.json merge, diff, install, guard checks
 │   └── commands/               one module per command
-├── templates/                  es/en document templates
+├── templates/                  es/en document templates; agent/guard.mjs is the Claude Code guard hook
 ├── test/                       vitest tests and fixtures
 ├── knowledge/                  Reference notes
 ├── checklists/                 Checklists (es/en); ai-prompt.md is the source of `engkit prompt`
@@ -99,7 +100,7 @@ Language precedence: `--lang` flag, then `.engkit.json` in the current directory
 { "lang": "en" }
 ```
 
-### `engkit init [--profile base] [--owner "<name>"]`
+### `engkit init [--profile base[,agent]] [--owner "<name>"]`
 
 Creates the base documents of a project and stores the language and the **path of each document** in `.engkit.json`. `engkit new` and `engkit index` read the paths from that file, not from the language. Existing files are never overwritten: they are reported and skipped.
 
@@ -134,6 +135,81 @@ engkit --lang en init --owner "Jane Doe"
 The log has only `id` and `owner`: its dates live in each `## YYYY-MM-DD` entry, so appending an entry never edits the frontmatter. Each pending entry (`### P-xx`) lists `type` (`review` \| `question`), `status` (`open` \| `closed`), `owner` and `date`.
 
 The templates are generic and follow a few principles: every fact carries a source, a date and an owner; link instead of duplicating; status documents show their date; what an automated test can verify is a test, not a paragraph; write only what someone will need for a future decision and cannot be derived from the code.
+
+#### Agent profile: `engkit init --profile agent`
+
+Additive (`--profile base,agent` does both; `agent` alone leaves the documents untouched). It prepares a project for [Claude Code](https://code.claude.com/docs) with minimal guards. Everything below is Claude Code specific; see "What is shared with other tools" at the end of this section.
+
+| File | What it is |
+|---|---|
+| `.claude/agents/reviewer.md` | Subagent with `tools: Read, Grep, Glob` (read-only): reviews and reports findings |
+| `.claude/agents/builder.md` | Subagent with `tools: Read, Grep, Glob, Edit, Write, Bash`: implements scoped changes and verifies them |
+| `.claude/hooks/engkit-guard.mjs` | The guard: a `PreToolUse` hook in plain Node, no dependencies |
+| `.claude/settings.json` | `permissions.deny` rules and the hook registration, **merged** with what is already there |
+
+`--agent reviewer|builder|both` picks the subagents (default `both`). Both link to `CLAUDE.md` and the ADR index (paths from `.engkit.json`) instead of copying rules; they never overwrite an existing file. Subagent files do not set `permissionMode`: enforcement lives in `settings.json`.
+
+**What is blocked**
+
+| Action | Enforced by |
+|---|---|
+| `rm` with recursive and force flags (`-rf`, `-fr`, `-r -f`, `--recursive --force`) | hook + `permissions.deny` |
+| `git push --force`, `-f`, `--force-with-lease`, refspec `+branch` | hook + `permissions.deny` |
+| `git push` to a protected branch (explicit, `HEAD:main`, `:main`, or no arguments while on it), `--all`, `--mirror` | hook |
+| `git commit` while on a protected branch | hook |
+| Reading or writing `.env*` except `.env.example` (Read, Write, Edit, MultiEdit, NotebookEdit, Grep, Glob and Bash words and redirections) | hook; `permissions.deny` for the exact names `.env`, `.env.local`, `.env.development`, `.env.production`, `.env.test`, `.env.staging` |
+
+The patterns `.env*` live only in the hook because a deny rule on `.env.*` would also block `.env.example` and an allow rule cannot carve an exception out of a deny.
+
+**Protected branches** come from `.engkit.json` (`init` writes the default):
+
+```json
+{ "protectedBranches": ["main", "master", "release/*"] }
+```
+
+`*` is a wildcard. A custom list replaces the default one.
+
+**Merging `.claude/settings.json`.** The file is read as JSON (if it is not valid JSON, for example because of comments, nothing is changed). `permissions.deny` gets the missing rules appended; `allow`, `ask` and every other key are kept, as are the indentation and line endings. The hook group is identified by `engkit-guard.mjs`: it is added or updated in place, so running `init` again is safe. Then the **diff is printed** and you are asked to confirm (default: no). Without a terminal nothing is written unless you pass `--yes` (exit code 1). `--dry-run` prints what would be created and the diff, and writes nothing. The write is atomic. It warns if `permissions.defaultMode` is `bypassPermissions`. It does not touch `settings.local.json`.
+
+`--update-guard` replaces `.claude/hooks/engkit-guard.mjs` when it differs from the shipped version, showing a diff and asking first (without it, a changed script is reported and left alone).
+
+**Why Node and not shell.** The hook is declared in exec form, so no shell is involved and the same entry works on Linux, macOS and Windows (`node` is a real executable everywhere):
+
+```json
+{ "type": "command", "command": "node", "args": ["${CLAUDE_PROJECT_DIR}/.claude/hooks/engkit-guard.mjs"], "onFailure": "block", "timeout": 10 }
+```
+
+A shell script would need a Bash version and a PowerShell version of a command parser that is hard to test; one `.mjs` file is tested the same way Claude Code runs it. The script is copied into the project, so it works for teammates who do not have `engkit`; they do need `node` in the PATH, and if it is missing `onFailure: "block"` blocks the guarded tools (fail closed). `onFailure` requires Claude Code 2.1.295 or newer. The guard also exits 2 on any internal error or unreadable input.
+
+**Limits** (these are guards against accidents, not a security boundary, as the Claude Code permissions documentation says about Bash rules):
+
+- Scripts that delete or read files on their own (`python -c`, `node -e`), `find -delete`, `git clean`, aliases, shell variables and globs that expand to a secret file are not covered.
+- `echo .env` is blocked (a false positive on purpose); text inside a message such as `git commit -m "document .env"` is not.
+- Only `git commit` is guarded on protected branches; `git merge`, `cherry-pick`, `revert`, `am` and `pull` are not.
+- PowerShell and `cmd` commands (`Remove-Item -Recurse -Force`, `rd /s`) are not parsed.
+- For tools other than Bash the guard checks every short string in the tool input, so a search pattern that is exactly `.env` is blocked too. The input field names of MultiEdit, NotebookEdit, Grep and Glob were not verified against the documentation, which is why it does not depend on them.
+
+**Sources used** (read on 2026-11-24; the pages show no version): `code.claude.com/docs/en/hooks`, `settings`, `permissions` and `sub-agents`. The behavior was also checked live with Claude Code 2.1.331: `rm -rf` and a `.env` read are refused by the hook, and the `Read(./.env)` deny rule refuses the read on its own.
+
+##### `engkit agent test-guards [--json]`
+
+Checks the installation without risk. It starts the hook configured in `.claude/settings.json` like Claude Code does (command and args, JSON on stdin) with synthetic inputs and a throwaway git repository (on `main`, on a working branch, and on a sample branch per extra protected pattern) as working directory. **Nothing is executed**: the guard only receives the text of the command. It checks that:
+
+- every blocked case exits **2** with a reason, and every allowed one (`rm file`, `git push origin feature/x`, `cat .env.example`...) exits **0**;
+- `permissions.deny` has the rules, the hook has `"onFailure": "block"`, the script exists and `node` starts;
+- `claude --version` is at least **2.1.295** (a warning if it is older or `claude` is not installed).
+
+Exit code: `0` all good, `1` a check failed, `2` the guards are not installed. It cannot test Claude Code's own permission engine, only that the rules are there.
+
+**What is shared with other tools (`AGENTS.md`).** `AGENTS.md` is plain instructions: it enforces nothing.
+
+| Can be shared (text, any tool) | Claude Code only |
+|---|---|
+| The rules and constraints in `CLAUDE.md`, which `AGENTS.md` already links to | `permissions` and `hooks` in `.claude/settings.json` |
+| Links to the ADRs, build and test commands | The frontmatter of `.claude/agents/*.md` |
+| The agent's role, written as prose | The `engkit-guard.mjs` script |
+
+`init` does not edit `CLAUDE.md` or `AGENTS.md`: it prints a suggested text for the constraints section. How other tools enforce restrictions was not verified, and nothing here claims it.
 
 ### `engkit new adr "<title>"`
 

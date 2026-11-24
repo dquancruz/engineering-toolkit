@@ -37,3 +37,16 @@ describe("templatePath", () => {
     expect(templatePath("en", "adr.md")).toBe(path.join(import.meta.dirname, "..", "templates", "en", "adr.md"));
   });
 });
+
+describe("protectedBranches", () => {
+  it("is read, and rejected when malformed", () => {
+    const dir = tmpDir();
+    fs.writeFileSync(path.join(dir, ".engkit.json"), JSON.stringify({ protectedBranches: ["main", "release/*"] }));
+    expect(loadConfig(dir).protectedBranches).toEqual(["main", "release/*"]);
+    for (const bad of [[], "main", [""], ["a b"], [1]]) {
+      fs.writeFileSync(path.join(dir, ".engkit.json"), JSON.stringify({ protectedBranches: bad }));
+      expect(() => loadConfig(dir)).toThrow(/protectedBranches/);
+    }
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+});
