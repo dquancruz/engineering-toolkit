@@ -1,0 +1,44 @@
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  📋  Jira CSV → JSON Reporter
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+📂  Reading: Jira.csv
+✅  5 rows found
+📑  Columns detected: 9
+
+🗺️   Column mapping:
+   key          ✓  Issue key
+   summary      ✓  Summary
+   type         ✓  Issue Type
+   status       ✓  Status
+   priority     ✓  Priority
+   assignee     ✓  Assignee
+   reporter     ✓  Reporter
+   created      ✓  Created
+   updated      ✓  Updated
+
+🐛  Filtering defects/bugs only: 4 of 5 rows
+
+✅  Report generated!
+
+📁  Full report : reports/report_Jira_TS.json
+📁  Summary     : reports/summary_Jira_TS.json
+
+📊  Quick summary:
+   By status:
+     Open                      2
+     In Progress               1
+     Reopened                  1
+   By priority:
+     High                      1
+     Highest                   1
+     Blocker                   1
+     Low                       1
+   Top assignees:
+     Daniel Quan               2
+     Jane Doe                  1
+     Unassigned                1
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+

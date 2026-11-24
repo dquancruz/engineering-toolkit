@@ -1,28 +1,12 @@
-const { parse } = require("csv-parse/sync");
-const fs = require("fs");
-const path = require("path");
+import { parse } from "csv-parse/sync";
+import fs from "node:fs";
+import path from "node:path";
 
-// ─── Arguments ────────────────────────────────────────────────────────────────
-const args = process.argv.slice(2);
-const csvPath = args[0];
-const filterPerson = args[1] ? args[1].trim().toLowerCase() : null;
-
-// Optional: base URL of your Jira instance, e.g. https://your-company.atlassian.net
-// When unset, the "url" field of each defect is null.
-const jiraBaseUrl = (process.env["JIRA_BASE_URL"] ?? "").trim().replace(/\/+$/, "");
-
-if (!csvPath) {
-  console.error("\n❌  Please provide the CSV file path.");
-  console.error("   Usage: node index.js path/to/file.csv [\"Person Name\"]\n");
-  console.error("   Examples:");
-  console.error("     node index.js csv/Jira.csv              → all defects");
-  console.error("     node index.js csv/Jira.csv \"Jane Doe\"   → only Jane's defects\n");
-  process.exit(1);
-}
-
-if (!fs.existsSync(csvPath)) {
-  console.error(`\n❌  File not found: ${csvPath}\n`);
-  process.exit(1);
+export interface JiraReportOptions {
+  /** Directory the report files are written to (default: `reports`, relative to cwd). */
+  out?: string;
+  /** Base URL of the Jira instance. Defaults to the JIRA_BASE_URL env var. */
+  baseUrl?: string;
 }
 
 // ─── Column mapping (supports English and Spanish Jira exports) ───────────────
@@ -66,14 +50,31 @@ function formatDate(value: string): { iso: string; readable: string } | { raw: s
   };
 }
 
-// ─── Main ─────────────────────────────────────────────────────────────────────
-function main() {
+/** Runs the report. Returns the process exit code. */
+export function runJiraReport(
+  csvPath: string,
+  person: string | undefined,
+  options: JiraReportOptions = {}
+): number {
+  const personArg = person ?? "";
+  const filterPerson = person ? person.trim().toLowerCase() : null;
+
+  // When unset, the "url" field of each defect is null.
+  const jiraBaseUrl = (options.baseUrl ?? process.env["JIRA_BASE_URL"] ?? "")
+    .trim()
+    .replace(/\/+$/, "");
+
+  if (!fs.existsSync(csvPath)) {
+    console.error(`\n❌  File not found: ${csvPath}\n`);
+    return 1;
+  }
+
   console.log("\n" + "━".repeat(50));
   console.log("  📋  Jira CSV → JSON Reporter");
   console.log("━".repeat(50));
   console.log(`\n📂  Reading: ${csvPath}`);
   if (filterPerson) {
-    console.log(`👤  Filtering by person: "${args[1]}"`);
+    console.log(`👤  Filtering by person: "${personArg}"`);
   }
 
   const raw = fs.readFileSync(csvPath, "utf-8");
@@ -88,12 +89,12 @@ function main() {
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
     console.error(`\n❌  Failed to parse CSV: ${message}\n`);
-    process.exit(1);
+    return 1;
   }
 
   if (records.length === 0) {
     console.error("\n❌  The CSV is empty or has no data rows.\n");
-    process.exit(1);
+    return 1;
   }
 
   const headers = Object.keys(records[0]!);
@@ -143,9 +144,9 @@ function main() {
     console.log(`👤  Matched person filter: ${rows.length} of ${beforeCount} defects\n`);
 
     if (rows.length === 0) {
-      console.error(`\n⚠️   No defects found for "${args[1]}".`);
+      console.error(`\n⚠️   No defects found for "${personArg}".`);
       console.error(`   Tip: check the exact name spelling in your CSV.\n`);
-      process.exit(0);
+      return 0;
     }
   } else {
     console.log();
@@ -191,17 +192,17 @@ function main() {
   });
 
   // ─── Save files ───────────────────────────────────────────────────────────
-  const outputDir = "./reports";
+  const outputDir = options.out ?? "reports";
   if (!fs.existsSync(outputDir)) fs.mkdirSync(outputDir, { recursive: true });
 
   const timestamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
   const baseName  = path.basename(csvPath, path.extname(csvPath));
-  const personTag = filterPerson ? `_${(args[1] ?? "").replace(/\s+/g, "_")}` : "";
+  const personTag = filterPerson ? `_${personArg.replace(/\s+/g, "_")}` : "";
 
   const fullReport = {
     generated_at:    new Date().toISOString(),
     source_file:     path.basename(csvPath),
-    filter_person:   args[1] || null,
+    filter_person:   person || null,
     total_processed: defects.length,
     summary,
     defects,
@@ -243,6 +244,5 @@ function main() {
   }
 
   console.log("\n" + "━".repeat(50) + "\n");
+  return 0;
 }
-
-main();

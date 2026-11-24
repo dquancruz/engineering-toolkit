@@ -1,0 +1,39 @@
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  📋  Jira CSV → JSON Reporter
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+📂  Reading: Jira.csv
+👤  Filtering by person: "Daniel Quan"
+✅  5 rows found
+📑  Columns detected: 9
+
+🗺️   Column mapping:
+   key          ✓  Issue key
+   summary      ✓  Summary
+   type         ✓  Issue Type
+   status       ✓  Status
+   priority     ✓  Priority
+   assignee     ✓  Assignee
+   reporter     ✓  Reporter
+   created      ✓  Created
+   updated      ✓  Updated
+
+🐛  Filtering defects/bugs only: 4 of 5 rows
+👤  Matched person filter: 2 of 4 defects
+
+✅  Report generated!
+
+📁  Full report : reports/report_Jira_Daniel_Quan_TS.json
+📁  Summary     : reports/summary_Jira_Daniel_Quan_TS.json
+
+📊  Quick summary:
+   By status:
+     In Progress               1
+     Reopened                  1
+   By priority:
+     Highest                   1
+     Low                       1
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+

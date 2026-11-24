@@ -1,0 +1,6 @@
+Issue key,Summary,Issue Type,Status,Priority,Assignee,Reporter,Created,Updated
+PROJ-101,"Login fails, Safari",Bug,Open,High,Jane Doe,John Smith,2026-04-01T10:00:00Z,2026-05-05T15:30:00Z
+PROJ-102,Pipe | in title,Bug,In Progress,Highest,Daniel Quan,Jane Doe,2026-04-02T09:00:00Z,2026-05-06T08:00:00Z
+PROJ-103,Story not a bug,Story,Open,Low,Jane Doe,John Smith,2026-04-03T09:00:00Z,
+PROJ-104,Blocker crash,Bug,Open,Blocker,,Alex Roe,not-a-date,2026-05-07T12:00:00Z
+PROJ-105,Minor typo,Defect,Reopened,Low,Daniel Quan,John Smith,2026-04-05T09:00:00Z,2026-05-01T09:00:00Z

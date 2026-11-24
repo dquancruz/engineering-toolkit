@@ -1,0 +1,28 @@
+{
+  "generated_at X,
+  "filter_person": null,
+  "total_processed": 4,
+  "summary": {
+    "byStatus": {
+      "Open": 2,
+      "In Progress": 1,
+      "Reopened": 1
+    },
+    "byPriority": {
+      "High": 1,
+      "Highest": 1,
+      "Blocker": 1,
+      "Low": 1
+    },
+    "byAssignee": {
+      "Jane Doe": 1,
+      "Daniel Quan": 2,
+      "Unassigned": 1
+    },
+    "byReporter": {
+      "John Smith": 2,
+      "Jane Doe": 1,
+      "Alex Roe": 1
+    }
+  }
+}
