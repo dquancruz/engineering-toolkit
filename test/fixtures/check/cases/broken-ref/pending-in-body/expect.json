@@ -1,0 +1,9 @@
+{
+  "errors": [
+    {
+      "rule": "broken-ref",
+      "file": "CLAUDE.md",
+      "line": 37
+    }
+  ]
+}

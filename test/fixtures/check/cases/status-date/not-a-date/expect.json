@@ -1,0 +1,9 @@
+{
+  "errors": [
+    {
+      "rule": "status-date",
+      "file": "docs/adr/0002-usar-redis.md",
+      "line": 4
+    }
+  ]
+}

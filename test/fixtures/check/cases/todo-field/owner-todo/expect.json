@@ -1,0 +1,9 @@
+{
+  "errors": [
+    {
+      "rule": "todo-field",
+      "file": "CLAUDE.md",
+      "line": 4
+    }
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "errors": [
+    {
+      "rule": "pending-entry",
+      "file": "docs/pendientes.md",
+      "line": 22
+    }
+  ]
+}

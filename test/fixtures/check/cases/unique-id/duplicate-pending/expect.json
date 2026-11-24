@@ -1,0 +1,9 @@
+{
+  "errors": [
+    {
+      "rule": "unique-id",
+      "file": "docs/pendientes.md",
+      "line": 28
+    }
+  ]
+}

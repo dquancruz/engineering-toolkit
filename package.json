@@ -1,6 +1,6 @@
 {
   "name": "engineering-toolkit",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "engkit: CLI with engineering tools (docs templates, prompt builder, git helpers, Jira reports)",
   "type": "module",
   "bin": {

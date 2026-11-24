@@ -81,4 +81,41 @@ describe("engkit CLI smoke", () => {
     expect(index).toContain("0001-use-postgres.md");
     expect(fs.readFileSync(path.join(dir, "docs/pending.md"), "utf-8")).toContain("### P-01: Check retention");
   });
+
+  it("has help for adr accept and check, and --supersedes in new adr", () => {
+    for (const args of [["adr", "accept"], ["check"], ["new", "adr"]]) {
+      const r = run([...args, "--help"]);
+      expect(r.status, args.join(" ")).toBe(0);
+    }
+    expect(run(["new", "adr", "--help"]).stdout).toContain("--supersedes <ID>");
+    expect(run(["check", "--help"]).stdout).toContain("--strict");
+  });
+
+  it("check: exit 2 without init, 0 when clean, 1 with errors, JSON output, --strict", () => {
+    const empty = tmpDir();
+    const r2 = run(["check"], empty);
+    expect(r2.status).toBe(2);
+    expect(r2.stderr).toContain("engkit init");
+
+    const dir = tmpDir();
+    expect(run(["init", "--owner", "Jane Doe"], dir).status).toBe(0);
+    const ok = run(["check"], dir);
+    expect(ok.status).toBe(0); // only the "not a git repo" warning
+    expect(ok.stdout).toContain("[git-history]");
+    expect(run(["check", "--strict"], dir).status).toBe(1);
+
+    fs.writeFileSync(path.join(dir, "CLAUDE.md"), fs.readFileSync(path.join(dir, "CLAUDE.md"), "utf-8") + "\nVer ADR-0042.\n");
+    const bad = run(["check"], dir);
+    expect(bad.status).toBe(1);
+    expect(bad.stdout).toMatch(/CLAUDE\.md:\d+  error  \[broken-ref\]  ADR-0042 does not exist\./);
+
+    const json = JSON.parse(run(["check", "--json"], dir).stdout) as {
+      ok: boolean;
+      errors: { rule: string; file: string; line: number }[];
+      summary: { errors: number };
+    };
+    expect(json.ok).toBe(false);
+    expect(json.errors[0]).toMatchObject({ rule: "broken-ref", file: "CLAUDE.md" });
+    expect(json.summary.errors).toBe(1);
+  });
 });

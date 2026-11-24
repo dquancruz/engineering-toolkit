@@ -84,3 +84,26 @@ export function nextAdrNumber(dir: string): number {
   }
   return max + 1;
 }
+
+/** `ADR-0003`, `adr-3`, `0003` or `3` -> 3. Returns null when it is not an ADR reference. */
+export function parseAdrRef(ref: string): number | null {
+  const m = /^(?:ADR-)?(\d+)$/i.exec(ref.trim());
+  return m ? Number(m[1]) : null;
+}
+
+/** File name of the ADR with this number in `dir`, if any. */
+export function findAdrFile(dir: string, number: number): string | null {
+  if (!fs.existsSync(dir)) return null;
+  for (const file of fs.readdirSync(dir).sort()) {
+    const m = ADR_FILE.exec(file);
+    if (m && Number(m[1]) === number) return file;
+  }
+  return null;
+}
+
+/** True for an empty owner or the `TODO` placeholder. */
+export function isTodoOrEmpty(value: unknown): boolean {
+  if (value === null || value === undefined) return true;
+  const s = String(value).trim();
+  return s === "" || s.toUpperCase() === "TODO";
+}

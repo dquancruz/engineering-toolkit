@@ -6,14 +6,12 @@ owner: {{owner_yaml}}
 # Bitácora
 
 <!--
-Solo se agrega al final. No se borran ni se editan entradas anteriores: si algo estaba mal,
+Solo se agrega al final. No se borran ni se editan líneas anteriores: si algo estaba mal,
 agrega una entrada nueva que lo corrija y enlaza a la anterior.
 Cada entrada lleva su fecha y separa lo verificado de lo no verificado.
--->
 
-Formato de cada entrada:
+Formato de cada entrada (con la fecha real):
 
-```
 ## AAAA-MM-DD
 
 ### Verificado
@@ -21,12 +19,4 @@ Formato de cada entrada:
 
 ### No verificado
 - Qué se supone o se oyó, y quién lo dijo.
-```
-
-## {{date}}
-
-### Verificado
-- Se crearon los documentos base del proyecto con `engkit init`.
-
-### No verificado
-- Nada por ahora.
+-->
