@@ -36,6 +36,6 @@ One phase = one branch = one PR. Status is updated in the PR that finishes each 
 
 ## Future ideas
 
-- **Make the tests that assume Linux portable.** CI runs the whole suite on Ubuntu only; Windows and macOS run just `test/agent` (the guard is the part that runs on every developer machine). Several other tests assume Linux (for example `/dev/null`, path separators, `npm` resolution in `test/global-setup.ts`). Make them portable and run the full suite on all three systems.
+- **Make the tests that assume Linux portable.** CI runs the whole suite on Ubuntu only; Windows and macOS run just `test/agent` (the guard is the part that runs on every developer machine). Several other tests assume Linux (for example `/dev/null` and path separators; `test/global-setup.ts` already starts `npm` through a shell on Windows). Make them portable and run the full suite on all three systems.
 
 - **Auditable exceptions for `engkit check`.** Today an accepted ADR cannot be corrected in place (a typo needs a superseding ADR) and there is no way to silence a rule. Idea: an `exceptions` list in `.engkit.json`, each entry with the ADR/line ID, the commit it applies to and a reason, reported by `check` as a **warning** so exceptions stay visible.
