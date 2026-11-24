@@ -1,0 +1,30 @@
+# Node.js
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# TypeScript compiled output
+*.js
+dist/
+
+# Environment variables
+.env
+.env.*
+!.env.example
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Generated output
+reports/
+tickets/
+tools/jira-defects-report/reports/
+tools/jira-defects-report/csv/
+tools/oncall-ticket-creator/tickets/
+
+# Logs
+logs/
+*.log
