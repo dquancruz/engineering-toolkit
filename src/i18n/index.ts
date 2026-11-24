@@ -15,6 +15,11 @@ export function templatesRoot(): string {
   return fileURLToPath(new URL("../../templates", import.meta.url));
 }
 
+/** Root of the shipped checklists (`checklists/` next to `dist/`). */
+export function checklistsRoot(): string {
+  return fileURLToPath(new URL("../../checklists", import.meta.url));
+}
+
 /** Templates live in `templates/<lang>/<name>`, e.g. `templates/es/adr.md`. */
 export function templatePath(lang: Lang, name: string): string {
   return path.join(templatesRoot(), lang, name);

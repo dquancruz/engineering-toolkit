@@ -8,7 +8,11 @@ import { runIndex } from "./commands/index-cmd.js";
 import { PROFILES, runInit, type Profile } from "./commands/init.js";
 import { runJiraOncall } from "./commands/jira-oncall.js";
 import { runJiraReport } from "./commands/jira-report.js";
+import { runPrompt } from "./commands/prompt.js";
+import { PRESET_IDS } from "./prompt/model.js";
 import { PENDING_TYPES, runNewAdr, runNewPending, type PendingType } from "./commands/new.js";
+
+const collect = (value: string, previous: string[]) => [...previous, value];
 
 function readVersion(): string {
   const pkg = new URL("../package.json", import.meta.url);
@@ -144,6 +148,52 @@ Examples:
         console.error(e.message);
         process.exitCode = 2;
       }
+    });
+
+  program
+    .command("prompt")
+    .description("Build a well-formed prompt for an AI (goal, context, material, limits, autonomy, done, verification, response)")
+    .option("--from <file>", "answers file (.yaml or .json); no questions are asked")
+    .addOption(new Option("--preset <preset>", "task type: preloads typical limits and verification").choices([...PRESET_IDS]))
+    .option("--goal <text>", "what you want to achieve")
+    .option("--context <text>", "what cannot be derived from the code")
+    .option("--material <item>", "file, link or @adr:ADR-0003 / @pending:P-04 (repeatable)", collect, [])
+    .option("--limit <item>", "something it must not do or touch, or @claude (repeatable)", collect, [])
+    .option("--autonomy <text>", "when to stop and ask instead of deciding")
+    .option("--done <text>", "how you will know it is finished (must be checkable)")
+    .option("--verify <item>", "command or step that checks the result (repeatable)", collect, [])
+    .option("--response <text>", "shape of the answer you want")
+    .option("--save [name]", "save the prompt and its answers to the prompts folder (git-ignored by default)")
+    .option("--no-gitignore", "do not add the prompts folder to .gitignore")
+    .option("--allow-secrets", "print and save even if a possible secret was detected")
+    .option("--no-env-scan", "do not compare the prompt with values from .env files")
+    .option("--strict", "exit 1 when there are warnings about empty or weak elements")
+    .addHelpText(
+      "after",
+      `
+Without --from or element flags it asks one question per element (needs a terminal).
+The prompt is printed to stdout; warnings, questions and messages go to stderr.
+
+Project integration (needs .engkit.json): the guided mode offers accepted ADRs and open
+pending items as material, and CLAUDE.md as a limit. They are added as paths, never copied.
+In files and flags use @adr:ADR-0003, @pending:P-04 and @claude.
+
+Secrets: if the prompt looks like it contains a token, key or a value from a .env file,
+nothing is printed or saved and the exit code is 1 (--allow-secrets overrides this).
+Warnings about empty or weak elements never block.
+
+Answers file (keys in English): preset, goal, context, material[], limits[], autonomy,
+done, verify[], response. Flags override the file.
+
+Exit codes: 0 ok, 1 blocked (secret, or warnings with --strict), 2 bad input or no terminal.
+
+Examples:
+  engkit prompt
+  engkit prompt --from prompts/2026-03-09-add-pagination.yaml
+  engkit prompt --preset bugfix --goal "Fix the 500 on POST /orders" --done "POST /orders returns 201" --verify '\`npm test\`' --save fix-orders`
+    )
+    .action(async (opts) => {
+      process.exitCode = await runPrompt(ctx.lang, opts as Parameters<typeof runPrompt>[1]);
     });
 
   program

@@ -27,11 +27,12 @@ engineering-toolkit/
 │   ├── i18n/                   es/en support
 │   ├── docs/                   frontmatter, ADR and pending helpers
 │   ├── check/                  engkit check: project loader, git helpers and rules
+│   ├── prompt/                 engkit prompt: checklist parser, warnings, secrets, interactive flow
 │   └── commands/               one module per command
 ├── templates/                  es/en document templates
 ├── test/                       vitest tests and fixtures
 ├── knowledge/                  Reference notes
-├── checklists/                 Reusable checklists
+├── checklists/                 Checklists (es/en); ai-prompt.md is the source of `engkit prompt`
 ├── ROADMAP.md                  Phases and status
 └── README.md
 ```
@@ -49,11 +50,11 @@ The CLI is not published to npm. `dist/` is not versioned, so releases ship a pr
 **Main method: install the tarball from a GitHub Release**
 
 ```bash
-npm i -g https://github.com/dquancruz/engineering-toolkit/releases/download/v0.2.0/engineering-toolkit-0.2.0.tgz
+npm i -g https://github.com/dquancruz/engineering-toolkit/releases/download/v0.3.0/engineering-toolkit-0.3.0.tgz
 engkit --help
 ```
 
-npm may print an `install-scripts` warning about `prepare`; it is harmless because the tarball already contains the built `dist/`. Replace `0.2.0` (in both places) with the version you want. Releases are listed at <https://github.com/dquancruz/engineering-toolkit/releases>. A release is created by pushing a `v*` tag; the workflow in `.github/workflows/release.yml` runs the tests, runs `npm pack` and attaches the `.tgz`. The tag must match the version in `package.json`.
+npm may print an `install-scripts` warning about `prepare`; it is harmless because the tarball already contains the built `dist/`. Replace `0.3.0` (in both places) with the version you want. Releases are listed at <https://github.com/dquancruz/engineering-toolkit/releases>. A release is created by pushing a `v*` tag; the workflow in `.github/workflows/release.yml` runs the tests, runs `npm pack` and attaches the `.tgz`. The tag must match the version in `package.json`.
 
 **Alternative: clone and link** (for development)
 
@@ -195,9 +196,74 @@ Use it in CI:
 - uses: actions/checkout@v4
   with:
     fetch-depth: 0        # full history, needed by adr-immutable and log-append-only
-- run: npm i -g https://github.com/dquancruz/engineering-toolkit/releases/download/v0.2.0/engineering-toolkit-0.2.0.tgz
+- run: npm i -g https://github.com/dquancruz/engineering-toolkit/releases/download/v0.3.0/engineering-toolkit-0.3.0.tgz
 - run: engkit check --strict
 ```
+
+### `engkit prompt`
+
+Builds a well-formed prompt for an AI from eight elements: **goal, context, material, limits, autonomy** (when to stop and ask), **definition of done, verification** and **shape of the response**. The prompt is printed as Markdown on **stdout**; questions, warnings and messages go to **stderr**, so you can pipe it: `engkit prompt --from p.yaml | pbcopy`. Headings use the language of the checklist (`--lang`); what you type is kept as is.
+
+**Single source.** The questions, examples, checks, "weak" and "checkable" wording and the presets live in [`checklists/es/ai-prompt.md`](checklists/es/ai-prompt.md) and [`checklists/en/ai-prompt.md`](checklists/en/ai-prompt.md). The tool reads them, nothing is duplicated in the code: edit the Markdown to change what it asks, warns about or preloads. The format is described in [`checklists/README.md`](checklists/README.md).
+
+**Guided mode** (needs a terminal): `engkit prompt` asks one question per element, showing the question, an example and the checks. In multi-line fields press **Enter twice** to submit; **Ctrl+C** cancels (exit 130). It starts by offering a preset; the preset's limits and verification are pre-filled and editable. At the end it shows the warnings and lets you fix the weak elements, then offers to save.
+
+**Non-interactive mode**: with `--from <file.yaml|json>` or any element flag nothing is asked. Flags override the file, element by element (lists are replaced).
+
+```bash
+engkit prompt --from prompt.yaml
+engkit prompt --preset bugfix --goal "Fix the 500 on POST /orders" \
+  --done "POST /orders without items returns 400 and the new test passes" \
+  --verify '`npm test`' --material @adr:ADR-0001 --limit @claude --save fix-orders
+```
+
+| Option | Description |
+|---|---|
+| `--from <file>` | Answers file (`.yaml`, `.yml` or `.json`) |
+| `--preset <id>` | `research`, `feature`, `bugfix`, `refactor` or `review`: adds typical limits and verification before yours |
+| `--goal`, `--context`, `--autonomy`, `--done`, `--response` | One value per element |
+| `--material`, `--limit`, `--verify` | Repeatable |
+| `--save [name]` | Save the prompt and its answers (see below) |
+| `--no-gitignore` | Do not add the prompts folder to `.gitignore` |
+| `--allow-secrets` | Print and save even if a possible secret is detected |
+| `--no-env-scan` | Do not compare the prompt with values from `.env` files |
+| `--strict` | Exit 1 when there are warnings about empty or weak elements |
+
+Answers file (keys are always in English; unknown keys are an error):
+
+```yaml
+preset: bugfix            # optional
+goal: Fix the 500 on POST /orders when items is missing
+context: Only happens with mobile clients v1.
+material:
+  - "@adr:ADR-0001"        # a path, see "Project integration"
+  - src/orders/handler.ts
+limits:
+  - "@claude"
+  - Do not change the database schema
+autonomy: Stop and ask if the public API has to change.
+done: POST /orders without items returns 400 and the new test passes
+verify: "`npm test`"       # text or a list
+response: A 3-line summary and a table of changed files.
+```
+
+**Warnings** never block (exit 0, or 1 with `--strict`): an empty element (with specific messages for "no limits set" and "does not say when to stop and ask"), vague wording taken from the checklist (`improve`, `make it work`...), a definition of done that is not checkable (no command in backticks, no number and no checkable wording) and a verification without a command.
+
+**Project integration** (needs `.engkit.json`). The guided mode offers the **accepted ADRs** and the **open pending items** as material, and `CLAUDE.md` as a limit (it says when `CLAUDE.md` has no rules yet). Only a path is added, never the content of the document:
+
+```
+- docs/adr/0001-use-postgresql.md (ADR-0001: Use PostgreSQL)
+- docs/pending.md:19 (P-01: Confirm retention period)
+- Follow the rules and constraints in CLAUDE.md.
+```
+
+In files and flags use `@adr:ADR-0003`, `@pending:P-04` and `@claude`. A reference that does not resolve is an error (exit 2), and so is an ADR that is not accepted (use its path as plain text to include it anyway). Without those tokens nothing is added automatically.
+
+**Secrets.** Before anything is printed or saved the prompt is checked for private keys, AWS, GitHub, Anthropic, OpenAI, Slack, Google and Stripe keys, JWTs, URLs with credentials, `api_key=`/`password=`-style assignments, and for **values from your `.env` files** (variables whose name suggests a secret, or whose value looks like a token; `.env.example` is ignored). If one is found, **nothing is printed or saved**, the findings are shown on stderr masked (`ghp_***`, or `.env:API_TOKEN`, never the value) and the exit code is 1. `--allow-secrets` overrides it. This is a heuristic, not a replacement for a real secret scanner. The `.env` files are only read in memory to compare; use `--no-env-scan` to skip it.
+
+**Saving.** `--save [name]` writes `prompts/YYYY-MM-DD-<name>.md` and a `.yaml` with the answers next to it, never overwriting a file; `engkit prompt --from prompts/<file>.yaml` rebuilds the same prompt. In a git repository the folder is added to `.gitignore` the first time (and the command says so): generated prompts are working artifacts, may carry internal context, and only point to your documents instead of copying them. To keep one, move its `.yaml` to a versioned folder. Change the folder with `"promptsDir": "docs/prompts"` in `.engkit.json`.
+
+Exit codes: **0** ok, **1** blocked (secret, or warnings with `--strict`), **2** bad input or no terminal (use `--from` or flags), **130** cancelled.
 
 ### `engkit jira report <csv> [person]`
 
@@ -299,7 +365,6 @@ See [ROADMAP.md](ROADMAP.md) for the phased plan of the `engkit` CLI and its sta
 
 ### Checklists
 
-- AI prompt checklist
 - Code review
 - Definition of Done
 - System design

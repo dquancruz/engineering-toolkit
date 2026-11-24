@@ -118,4 +118,26 @@ describe("engkit CLI smoke", () => {
     expect(json.errors[0]).toMatchObject({ rule: "broken-ref", file: "CLAUDE.md" });
     expect(json.summary.errors).toBe(1);
   });
+
+  it("prompt: help, non-interactive output on stdout, warnings on stderr, exit 2 without a terminal", () => {
+    expect(run(["prompt", "--help"]).stdout).toContain("--allow-secrets");
+    const dir = tmpDir();
+    expect(run(["init", "--owner", "Jane Doe"], dir).status).toBe(0);
+
+    const ok = run(["prompt", "--preset", "review", "--goal", "Review the diff of PR 12", "--done", "`git diff` has no open findings", "--verify", "`git diff`"], dir);
+    expect(ok.status).toBe(0);
+    expect(ok.stdout).toContain("## Objetivo");
+    expect(ok.stdout).not.toContain("warning");
+    expect(ok.stderr).toContain("warning");
+
+    const noTerminal = run(["prompt"], dir);
+    expect(noTerminal.status).toBe(2);
+    expect(noTerminal.stderr).toContain("needs a terminal");
+
+    const token = "gh" + "p_" + "aB3dE5gH7jK9mN1pQ3sT5vW7yZ9bD1fH3jL5";
+    const blocked = run(["prompt", "--goal", `Use ${token}`], dir);
+    expect(blocked.status).toBe(1);
+    expect(blocked.stdout).toBe("");
+    expect(blocked.stderr).not.toContain(token);
+  });
 });
