@@ -1,0 +1,61 @@
+{
+  "generated_at X,
+  "source_file": "Jira.csv",
+  "filter_person": "Daniel Quan",
+  "total_processed": 2,
+  "summary": {
+    "byStatus": {
+      "In Progress": 1,
+      "Reopened": 1
+    },
+    "byPriority": {
+      "Highest": 1,
+      "Low": 1
+    },
+    "byAssignee": {
+      "Daniel Quan": 2
+    },
+    "byReporter": {
+      "Jane Doe": 1,
+      "John Smith": 1
+    }
+  },
+  "defects": [
+    {
+      "key": "PROJ-102",
+      "url": "https://your-company.atlassian.net/browse/PROJ-102",
+      "summary": "Pipe | in title",
+      "type": "Bug",
+      "status": "In Progress",
+      "priority": "Highest",
+      "assignee": "Daniel Quan",
+      "reporter": "Jane Doe",
+      "created": {
+        "iso": "ISO",
+        "readable": "April 2, 2026 at 09:00 AM"
+      },
+      "last_updated": {
+        "iso": "ISO",
+        "readable": "May 6, 2026 at 08:00 AM"
+      }
+    },
+    {
+      "key": "PROJ-105",
+      "url": "https://your-company.atlassian.net/browse/PROJ-105",
+      "summary": "Minor typo",
+      "type": "Defect",
+      "status": "Reopened",
+      "priority": "Low",
+      "assignee": "Daniel Quan",
+      "reporter": "John Smith",
+      "created": {
+        "iso": "ISO",
+        "readable": "April 5, 2026 at 09:00 AM"
+      },
+      "last_updated": {
+        "iso": "ISO",
+        "readable": "May 1, 2026 at 09:00 AM"
+      }
+    }
+  ]
+}

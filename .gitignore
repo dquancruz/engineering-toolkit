@@ -21,9 +21,10 @@ dist/
 # Generated output
 reports/
 tickets/
-tools/jira-defects-report/reports/
-tools/jira-defects-report/csv/
-tools/oncall-ticket-creator/tickets/
+csv/
+
+# Packaging
+*.tgz
 
 # Logs
 logs/

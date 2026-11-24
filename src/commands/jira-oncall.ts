@@ -1,5 +1,10 @@
-const fs = require("fs");
-const path = require("path");
+import fs from "node:fs";
+import path from "node:path";
+
+export interface JiraOncallOptions {
+  /** Directory the ticket is written to (default: `tickets`, relative to cwd). */
+  out?: string;
+}
 
 // ─── Priority ordering (highest → lowest) ────────────────────────────────────
 const PRIORITY_ORDER: Record<string, number> = {
@@ -48,26 +53,6 @@ interface Report {
   defects: Defect[];
 }
 
-// ─── Arguments ────────────────────────────────────────────────────────────────
-const args = process.argv.slice(2);
-const reportPath   = args[0];
-const oncallPerson = args[1] ? args[1].trim() : "Oncall Engineer";
-const sprintName   = args[2] ? args[2].trim() : "Current Sprint";
-
-if (!reportPath) {
-  console.error("\n❌  Please provide the path to the jira-defects-report JSON file.");
-  console.error("   Usage: node index.js path/to/report.json [\"Oncall Name\"] [\"Sprint Name\"]\n");
-  console.error("   Examples:");
-  console.error("     node index.js ../jira-defects-report/reports/report_Jira_2026-05-13.json");
-  console.error("     node index.js ../jira-defects-report/reports/report_Jira_2026-05-13.json \"Daniel Quan\" \"Sprint 42\"\n");
-  process.exit(1);
-}
-
-if (!fs.existsSync(reportPath)) {
-  console.error(`\n❌  File not found: ${reportPath}\n`);
-  process.exit(1);
-}
-
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function readableDate(entry: DateEntry | { raw: string } | null): string {
   if (!entry) return "—";
@@ -77,7 +62,20 @@ function readableDate(entry: DateEntry | { raw: string } | null): string {
 }
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
-function main() {
+export function runJiraOncall(
+  reportPath: string,
+  person: string | undefined,
+  sprint: string | undefined,
+  options: JiraOncallOptions = {}
+): number {
+  const oncallPerson = person ? person.trim() : "Oncall Engineer";
+  const sprintName   = sprint ? sprint.trim() : "Current Sprint";
+
+  if (!fs.existsSync(reportPath)) {
+    console.error(`\n❌  File not found: ${reportPath}\n`);
+    return 1;
+  }
+
   console.log("\n" + "━".repeat(55));
   console.log("  🎫  Oncall Ticket Creator");
   console.log("━".repeat(55));
@@ -93,12 +91,12 @@ function main() {
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
     console.error(`\n❌  Failed to read/parse JSON: ${message}\n`);
-    process.exit(1);
+    return 1;
   }
 
   if (!report.defects || report.defects.length === 0) {
     console.error("\n⚠️   No defects found in the report.\n");
-    process.exit(0);
+    return 0;
   }
 
   // ─── Sort defects by priority ────────────────────────────────────────────────
@@ -190,7 +188,7 @@ function main() {
   const content = md.join("\n");
 
   // ─── Save output ─────────────────────────────────────────────────────────────
-  const outputDir = "./tickets";
+  const outputDir = options.out ?? "tickets";
   if (!fs.existsSync(outputDir)) fs.mkdirSync(outputDir, { recursive: true });
 
   const timestamp  = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
@@ -202,6 +200,5 @@ function main() {
   // ─── Console output ───────────────────────────────────────────────────────────
   console.log(content);
   console.log(`✅  Ticket saved to: ${ticketFile}\n`);
+  return 0;
 }
-
-main();
