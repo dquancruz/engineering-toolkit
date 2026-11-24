@@ -22,6 +22,6 @@ One phase = one branch = one PR. Status is updated in the PR that finishes each 
 
 - One CLI with subcommands; the Jira tools live inside it.
 - Templates and checklists in Spanish and English, selected with `--lang es|en` (default `es`); `engkit init` stores the language in `.engkit.json`.
-- Installed from GitHub, not published to npm. The `prepare` script compiles on install. Known problem: `npm i -g github:...` does not complete with npm 11.20.0 (see README, Install); clone + `npm link` and `npm pack` tarballs work.
+- Not published to npm. Main install method: `npm i -g <URL of the .tgz attached to a GitHub Release>`, built by the `release.yml` workflow on `v*` tags. Alternatives: clone + `npm link`, and `npm i github:...` inside a project. `npm i -g github:...` does not complete with npm 11.20.0 (see README, Install).
 - JSON, type converter, regex and JWT utilities are a separate web app, not CLI commands.
 - AI features come last and read `ANTHROPIC_API_KEY`; without it they fail with a clear message.

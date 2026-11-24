@@ -42,9 +42,18 @@ Requires **Node.js 22 or newer**.
 
 ### Install
 
-The CLI is not published to npm. `dist/` is not versioned, so the `prepare` script compiles the TypeScript when the package is installed from a git checkout.
+The CLI is not published to npm. `dist/` is not versioned, so releases ship a prebuilt tarball.
 
-**Option 1: clone and link** (verified, recommended)
+**Main method: install the tarball from a GitHub Release**
+
+```bash
+npm i -g https://github.com/dquancruz/engineering-toolkit/releases/download/v0.1.0/engineering-toolkit-0.1.0.tgz
+engkit --help
+```
+
+npm may print an `install-scripts` warning about `prepare`; it is harmless because the tarball already contains the built `dist/`. Replace `0.1.0` (in both places) with the version you want. Releases are listed at <https://github.com/dquancruz/engineering-toolkit/releases>. A release is created by pushing a `v*` tag; the workflow in `.github/workflows/release.yml` runs the tests, runs `npm pack` and attaches the `.tgz`. The tag must match the version in `package.json`.
+
+**Alternative: clone and link** (for development)
 
 ```bash
 git clone git@github.com:dquancruz/engineering-toolkit.git
@@ -54,16 +63,16 @@ npm link        # exposes `engkit` on your PATH
 engkit --help
 ```
 
-**Option 2: install a packed tarball** (verified)
+**Alternative: inside a project**
 
 ```bash
-npm pack                                   # builds dist/ and writes engineering-toolkit-<version>.tgz
-npm i -g ./engineering-toolkit-<version>.tgz
+npm i github:dquancruz/engineering-toolkit    # not global; `prepare` builds dist/
+npx engkit --help
 ```
 
-**Option 3: `npm i -g github:dquancruz/engineering-toolkit`** (known problem)
+**Known problem: `npm i -g github:dquancruz/engineering-toolkit`**
 
-With npm 11.20.0, a global install of *any* git package that has a `prepare` script ends with a dangling symlink and no `engkit` binary: npm blocks dependency install scripts by default (see `npm help install-scripts`), and the global git install flow does not complete. It was reproduced with a minimal package that only has `prepare`, so it is not specific to this repo. A non-global install (`npm i github:dquancruz/engineering-toolkit` inside a project) does build `dist/` and works.
+With npm 11.20.0, a global install of *any* git package that has a `prepare` script ends with a dangling symlink and no `engkit` binary: npm blocks dependency install scripts by default (see `npm help install-scripts`), and the global git install flow does not complete. It was reproduced with a minimal package that only has `prepare`, so it is not specific to this repo. Use the release tarball instead.
 
 Development:
 
