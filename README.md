@@ -25,8 +25,9 @@ engineering-toolkit/
 │   ├── program.ts              command definitions
 │   ├── config.ts               .engkit.json
 │   ├── i18n/                   es/en support
+│   ├── docs/                   frontmatter, ADR and pending helpers
 │   └── commands/               one module per command
-├── templates/                  es/en document templates (filled in from Phase 1)
+├── templates/                  es/en document templates
 ├── test/                       vitest tests and fixtures
 ├── knowledge/                  Reference notes
 ├── checklists/                 Reusable checklists
@@ -95,6 +96,54 @@ Language precedence: `--lang` flag, then `.engkit.json` in the current directory
 ```json
 { "lang": "en" }
 ```
+
+### `engkit init [--profile base] [--owner "<name>"]`
+
+Creates the base documents of a project and stores the language and the **path of each document** in `.engkit.json`. `engkit new` and `engkit index` read the paths from that file, not from the language. Existing files are never overwritten: they are reported and skipped.
+
+```bash
+engkit init                              # Spanish (default)
+engkit --lang en init --owner "Jane Doe"
+```
+
+| Document (es / en) | Purpose |
+|---|---|
+| `docs/adr/0000-plantilla.md` / `0000-template.md` | ADR template: context, decision, consequences, alternatives, sources |
+| `BITACORA.md` / `LOG.md` | Append-only log; each `## YYYY-MM-DD` entry separates verified from unverified |
+| `CLAUDE.md`, `AGENTS.md` | Rules and constraints for coding agents; `AGENTS.md` links to `CLAUDE.md` instead of duplicating it |
+| `docs/glosario.md` / `glossary.md` | Terms, each with source, date and owner |
+| `docs/pendientes.md` / `pending.md` | Open reviews and questions (`P-xx`), each with type, status and owner |
+| `docs/diseno-vigente.md` / `current-design.md` | Minimal current-design skeleton with a visible date |
+| `docs/DECISIONES.md` / `DECISIONS.md` | Generated ADR index (also created by `init`) |
+
+`--owner` takes priority over `git config user.name`; without either, owner fields say `TODO`. Dates are today's date.
+
+**Frontmatter.** Every template starts with YAML frontmatter. Keys and status values are the same in Spanish and English (only the body and headings are translated), so tools do not depend on the language:
+
+| Key | Used in | Values |
+|---|---|---|
+| `id` | all | `ADR-0000`, `LOG`, `CLAUDE`, `AGENTS`, `GLOSSARY`, `PENDING`, `CURRENT-DESIGN`, `DECISIONS` |
+| `status` | ADR, current design | ADR: `proposed` \| `accepted` \| `superseded`. Design: `current` \| `outdated` |
+| `date` | all except the log | `YYYY-MM-DD` |
+| `owner` | all | name or `TODO` |
+| `source` | ADR, current design | link or reference to where the information comes from |
+| `supersedes`, `superseded_by` | ADR | an ADR id such as `ADR-0003` (blank when unused) |
+
+The log has only `id` and `owner`: its dates live in each `## YYYY-MM-DD` entry, so appending an entry never edits the frontmatter. Each pending entry (`### P-xx`) lists `type` (`review` \| `question`), `status` (`open` \| `closed`), `owner` and `date`.
+
+The templates are generic and follow a few principles: every fact carries a source, a date and an owner; link instead of duplicating; status documents show their date; what an automated test can verify is a test, not a paragraph; write only what someone will need for a future decision and cannot be derived from the code.
+
+### `engkit new adr "<title>"`
+
+Creates the next ADR, e.g. `docs/adr/0007-title-in-kebab-case.md`, with `status: proposed`. The number is the highest existing one plus one (the `0000` template does not count). It starts from the project's own ADR template when it exists. Accents and symbols are removed from the file name. `--owner "<name>"` as in `init`.
+
+### `engkit new pendiente [title]` (alias `new pending`)
+
+Appends an entry with the next ID (`P-01` ... `P-99`, `P-100`, ...) to the pending file and refreshes its date. Options: `--type review|question` (default `question`), `--owner "<name>"`.
+
+### `engkit index`
+
+Regenerates the ADR index (number, title, status, date, supersedes / superseded by). It is a generated file and says so in its header: do not edit it.
 
 ### `engkit jira report <csv> [person]`
 
