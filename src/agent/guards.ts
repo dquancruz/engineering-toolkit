@@ -315,7 +315,7 @@ export function formatGuardsReport(report: GuardsReport): string {
   const passed = report.items.filter((i) => i.status === "pass").length;
   lines.push("", `${passed} passed, ${failed} failed, ${warned} warnings.`);
   lines.push(
-    "Note: this checks the hook and that the deny rules are present. It cannot test Claude Code's own permission engine; use a live check for that."
+    "Note: this checks the hook and that the deny and ask rules are present. It cannot test Claude Code's own permission engine; use a live check for that."
   );
   return lines.join("\n");
 }
