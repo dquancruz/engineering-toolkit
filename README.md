@@ -34,6 +34,8 @@ engineering-toolkit/
 │   ├── env/                    .env variable name reader (never returns values)
 │   ├── checklists/             parser of the checklists used by `engkit prompt --checklist`
 │   ├── legacy/                 business rules, tests, defects, code evidence and the rule index
+│   ├── requirements/           RNF and RES entries and the guided collector
+│   ├── rebuild/                slices, strangler and data plans, test plan
 │   └── commands/               one module per command
 ├── templates/                  es/en document templates; agent/guard.mjs is the Claude Code guard hook
 ├── test/                       vitest tests and fixtures
@@ -57,11 +59,11 @@ The CLI is not published to npm. `dist/` is not versioned, so releases ship a pr
 **Main method: install the tarball from a GitHub Release**
 
 ```bash
-npm i -g https://github.com/dquancruz/engineering-toolkit/releases/download/v0.6.0/engineering-toolkit-0.6.0.tgz
+npm i -g https://github.com/dquancruz/engineering-toolkit/releases/download/v0.7.0/engineering-toolkit-0.7.0.tgz
 engkit --help
 ```
 
-npm may print an `install-scripts` warning about `prepare`; it is harmless because the tarball already contains the built `dist/`. Replace `0.6.0` (in both places) with the version you want. Releases are listed at <https://github.com/dquancruz/engineering-toolkit/releases>. A release is created by pushing a `v*` tag; the workflow in `.github/workflows/release.yml` runs the tests, runs `npm pack` and attaches the `.tgz`. The tag must match the version in `package.json`; see [Release cycle](#release-cycle).
+npm may print an `install-scripts` warning about `prepare`; it is harmless because the tarball already contains the built `dist/`. Replace `0.7.0` (in both places) with the version you want. Releases are listed at <https://github.com/dquancruz/engineering-toolkit/releases>. A release is created by pushing a `v*` tag; the workflow in `.github/workflows/release.yml` runs the tests, runs `npm pack` and attaches the `.tgz`. The tag must match the version in `package.json`; see [Release cycle](#release-cycle).
 
 **Alternative: clone and link** (for development)
 
@@ -148,7 +150,7 @@ Language precedence: `--lang` flag, then `.engkit.json` in the current directory
 { "lang": "en" }
 ```
 
-### `engkit init [--profile base[,agent,legacy]] [--owner "<name>"]`
+### `engkit init [--profile base[,agent,legacy,requirements,rebuild]] [--with strangler,data] [--owner "<name>"]`
 
 Creates the base documents of a project and stores the language and the **path of each document** in `.engkit.json`. `engkit new` and `engkit index` read the paths from that file, not from the language. Existing files are never overwritten: they are reported and skipped.
 
@@ -184,7 +186,7 @@ The log has only `id` and `owner`: its dates live in each `## YYYY-MM-DD` entry,
 
 The templates are generic and follow a few principles: every fact carries a source, a date and an owner; link instead of duplicating; status documents show their date; what an automated test can verify is a test, not a paragraph; write only what someone will need for a future decision and cannot be derived from the code.
 
-The `agent` and [`legacy`](#legacy-profile-engkit-init---profile-legacy) profiles are additive.
+The `agent`, [`legacy`](#legacy-profile-engkit-init---profile-legacy), [`requirements`](#requirements-profile-engkit-init---profile-requirements) and [`rebuild`](#rebuild-profile-engkit-init---profile-rebuild) profiles are additive.
 
 #### Agent profile: `engkit init --profile agent`
 
@@ -317,7 +319,7 @@ Verifies the project documents. Output is one line per finding, `file:line  seve
 | `git-history` | warning | The git-based rules could not run or cannot be trusted (see below) |
 | `missing-doc` | warning | A document configured in `.engkit.json` does not exist |
 
-With the legacy profile there are more rules: see [Legacy profile](#legacy-profile-engkit-init---profile-legacy).
+With the optional profiles there are more rules: see [Legacy](#legacy-profile-engkit-init---profile-legacy), [Requirements](#requirements-profile-engkit-init---profile-requirements) and [Rebuild](#rebuild-profile-engkit-init---profile-rebuild).
 
 **How the git rules work.** For each ADR, `check` lists the commits that touched the file (following renames) and finds the first one where `status` is `accepted`. From there, every step (commit to commit, and finally the working tree against `HEAD`) must be an allowed change, so an edit that is later reverted is still caught, and an uncommitted edit is caught before you commit. The log is checked the same way: each version must start with all the lines of the previous one. Commit order is used, not dates.
 
@@ -339,20 +341,20 @@ Use it in CI:
 - uses: actions/checkout@v7
   with:
     fetch-depth: 0        # full history, needed by adr-immutable and log-append-only
-- run: npm i -g https://github.com/dquancruz/engineering-toolkit/releases/download/v0.6.0/engineering-toolkit-0.6.0.tgz
+- run: npm i -g https://github.com/dquancruz/engineering-toolkit/releases/download/v0.7.0/engineering-toolkit-0.7.0.tgz
 - run: engkit check --strict
 ```
 
 ### Legacy profile: `engkit init --profile legacy`
 
-For documenting a system that will be maintained or rebuilt: what it does (business rules), how that is checked (acceptance tests), what is wrong with it (defects) and where each fact comes from. Run it with the base documents (`engkit init --profile base,legacy`), which `check` needs. It adds a `legacy` section and `evidenceRoots` to `.engkit.json`, adds `.engkit.local.json` to `.gitignore` and never overwrites a file.
+For documenting a system that will be maintained or rebuilt: what it does (business rules), how that is checked (acceptance tests), what is wrong with it (defects) and where each fact comes from. Run it with the base documents (`engkit init --profile base,legacy`), which `check` needs. It adds a `legacy` section and `evidenceRoots` to `.engkit.json`, creates the [sources register](#sources-register) if no profile did it yet, adds `.engkit.local.json` to `.gitignore` and never overwrites a file.
 
 | es / en | ID | Content |
 |---|---|---|
 | `docs/reglas/` / `docs/rules/` | `RN-0001` | One business rule per file |
 | `docs/pruebas/` / `docs/acceptance/` | `PA-0001` | One acceptance test per file (given, when, then) |
 | `docs/defectos/` / `docs/defects/` | `D-0001` | One defect of the old system per file |
-| `docs/fuentes.md` / `sources.md` | `F-01` | Register of the sources |
+| `docs/fuentes.md` / `sources.md` | `F-01` | [Sources register](#sources-register), shared with `requirements` |
 | `docs/REGLAS.md` / `RULES.md` | | Generated rule index |
 
 Open questions stay in the pending file (`P-xx`). One file per item keeps diffs and history per rule and avoids merge conflicts when rules are added in parallel; a repeated ID is caught by `check`. Files are named `<ID>-description.md`.
@@ -369,18 +371,7 @@ engkit index && engkit check --strict
 
 #### Sources
 
-Each entry of the sources register says what it is and how it was obtained. All four fields are required:
-
-```markdown
-### F-02: Billing manager
-
-- type: person
-- obtained_by: Jane Doe
-- obtained_on: 2026-03-09
-- method: interview
-```
-
-`type` is `code`, `database`, `schema`, `data`, `document` or `person`. Stored procedures and other code kept in a database are `code`.
+Evidence that is not code, and the expected result of every test, cite entries of the [sources register](#sources-register).
 
 **Why a test cannot take its expected result from code.** Every PA names `expected_source`: one or more `F-xx` that are not of type `code`. An expected value copied from the code under test only confirms that the code does what it does, defects included, so it can never fail for the right reason. It has to come from somewhere that can disagree with the code: a person, a document, real data. `check` rejects a missing `expected_source`, an unknown ID, a source of type `code`, a code reference (`erp:path:10`) in the field and a source whose entry cites one. It cannot know whether a person or a document actually got the value from the code; that is for the reviewer.
 
@@ -460,6 +451,229 @@ A reference cannot leave its root (`..`, absolute paths and symlinks pointing ou
 #### Rule index
 
 `engkit index` also writes `docs/REGLAS.md` (`RULES.md`): ID, title, area, status, number of evidences, tests, defects, open questions and owner, ordered by area and ID, with totals per status. It says nothing about whether evidence is current, because that depends on each machine's roots. Resolve merge conflicts in it by regenerating it.
+
+### Sources register
+
+`docs/fuentes.md` (`sources.md`) says where each fact comes from. It is shared by the `legacy` and `requirements` profiles: the first one that needs it creates it, and an existing file is never touched. Its path is in a section of its own:
+
+```json
+{ "sources": { "doc": "docs/fuentes.md" } }
+```
+
+Each entry says what the source is and how it was obtained. All four fields are required:
+
+```markdown
+### F-02: Billing manager
+
+- type: person
+- obtained_by: Jane Doe
+- obtained_on: 2026-03-09
+- method: interview
+```
+
+`type` is `code`, `database`, `schema`, `data`, `document` or `person`. Stored procedures and other code kept in a database are `code`. `check` reports a missing or invalid field (`source-entry`), repeated IDs and references to entries that do not exist.
+
+**Projects created with 0.6.0** keep the path in `legacy.sources`. They keep working unchanged (both places are read; if both exist they must be equal). Running `engkit init` with any profile moves it to `sources.doc` and leaves the file alone. After that, engkit 0.6.0 no longer accepts the configuration, so upgrade everyone who uses the project.
+
+### Requirements profile: `engkit init --profile requirements`
+
+Non-functional requirements and fixed constraints, for a new system or a rebuild. It adds a `requirements` section to `.engkit.json`, the document `docs/requisitos.md` (`requirements.md`) and, if it does not exist yet, the [sources register](#sources-register). It creates nothing else of the legacy profile. Run it with the base documents (`--profile base,requirements`), which `check` needs.
+
+```markdown
+## Non-functional requirements
+
+### RNF-01: Invoice search
+
+- category: performance
+- status: confirmed
+- measure: p95 latency with 200 concurrent users
+- target: <= 300 ms
+- verify: PA-0012
+- source: F-02
+- owner: Jane Doe
+- date: 2026-03-09
+
+## Fixed constraints <!-- engkit:constraints -->
+
+### RES-01: Deployment region
+
+- kind: region
+- value: eu-west-1
+- decided_by: Legal
+- origin: ADR-0002
+- owner: Jane Doe
+- date: 2026-03-09
+```
+
+`category`: `users`, `sensitive-data`, `performance`, `availability`, `integrations`, `maintenance`. `status`: `draft`, `confirmed`, `not-applicable` (with `reason`). `kind`: `cloud`, `region`, `identity`, `database`, `other`. `verify` is a `PA-xxxx` or a command in backticks.
+
+**Sources.** `source` and `origin` take ADR IDs and `F-xx` IDs of the [sources register](#sources-register), with the same types as in a legacy project (`code` too, though it is unusual in a new system).
+
+| Condition | `check` rule | Severity |
+|---|---|---|
+| Missing title, `category`, `status`, `owner`; `confirmed` without `measure` or `target`; `not-applicable` without `reason`; invalid `kind`, `value` or `verify` | `requirement-field` | error |
+| ... a `maintenance` requirement without `owner` (who will maintain the system) | `requirement-field` | error |
+| Constraint without `decided_by` or `origin` | `constraint-origin` | error |
+| `origin`, `source` or `verify` cites something that does not exist | `broken-ref` | error |
+| The cited ADR is not `accepted` | `origin-adr` | warning |
+| A category with no requirement | `requirement-coverage` | warning |
+| `users`, `performance` or `availability` target without a number | `requirement-measurable` | warning |
+| `confirmed` without `source` | `requirement-source` | warning |
+| `confirmed` `performance` or `availability` without `verify` | `requirement-unverified` | warning |
+
+#### `engkit requirements [--from <file>] [--dry-run]`
+
+Without `--from` it asks, category by category and then for constraints (needs a terminal). What you do not know stays `draft` and it offers to open a `P-xx` question. Nothing is written until the end. With `--from`, a YAML or JSON file:
+
+```yaml
+requirements:
+  - category: performance
+    title: Invoice search
+    status: confirmed        # draft by default
+    measure: p95 latency
+    target: <= 300 ms
+    verify: PA-0012
+    source: F-02
+constraints:
+  - kind: region
+    title: Deployment region
+    value: eu-west-1
+    decided_by: Legal
+    origin: [ADR-0002]
+```
+
+New entries are **appended** with new IDs; existing ones are never edited, and an entry with the same category (or kind) and title is skipped. Unknown keys are errors. Possible secrets block the write, as in `engkit prompt` (`--allow-secrets` overrides). Exit code: `0` ok, `1` possible secret, `2` bad input or no terminal, `130` cancelled.
+
+### Rebuild profile: `engkit init --profile rebuild`
+
+For rebuilding a system. It is `requirements` + `legacy` (both added, with a notice, when missing) + a plan made of vertical slices and a test plan. `--with strangler` and `--with data` add the optional plans, now or later.
+
+| es / en | Content |
+|---|---|
+| `docs/reconstruccion/plan.md` / `rebuild/plan.md` | Goal, exclusions, global done criteria, risks `K-01` and links |
+| `docs/reconstruccion/rebanadas/` / `rebuild/slices/` | One vertical slice per file, `SL-01` |
+| `docs/reconstruccion/estrangulador.md` / `rebuild/strangler.md` | `--with strangler` |
+| `docs/reconstruccion/datos/` / `rebuild/data/` | `--with data`: one file per target table |
+| `docs/plan-de-pruebas.md` / `test-plan.md` | Generated by `engkit testplan` |
+
+The plan links IDs and does not copy their content. What is **in** scope is the union of the slices; what is left **out** is declared in the plan's frontmatter:
+
+```yaml
+excluded:
+  - rule: RN-0007
+    reason: replaced by an external service
+    decision: ADR-0005       # optional
+```
+
+A slice (`engkit new slice "<title>" --rule RN-0001 --test PA-0001`, alias `new rebanada`):
+
+```yaml
+id: SL-01
+status: planned              # planned | in-progress | done | dropped
+order: 1
+rules: [RN-0001]
+tests: [PA-0001]
+requirements: [RNF-01]
+constraints: [RES-01]
+decisions: [ADR-0003]
+risks: [K-01]
+questions: [P-04]
+done:
+  - text: The agreed cases pass
+    verify: PA-0001          # PA or `command`
+```
+
+Risks are `### K-01: title` entries with `probability` and `impact` (`low`, `medium`, `high`), `mitigation` and `owner`.
+
+| Condition | `check` rule | Severity |
+|---|---|---|
+| `confirmed` or `modified` rule in no slice and not excluded | `rule-unplanned` | warning |
+| Slice without tests | `slice-untested` | warning |
+| A slice rule that none of its tests covers | `slice-rule-untested` | warning |
+| Slice with a `discarded` rule | `slice-discarded-rule` | warning |
+| A rule both in a slice and excluded | `plan-excluded` | warning |
+| Slice without done criteria, or a criterion without `text` or `verify` | `slice-done` | error |
+| `done` slice with a test that is not `ready` | `slice-done` | error |
+| Exclusion without a reason | `plan-excluded` | error |
+| Missing or repeated `order` | `slice-order` | error |
+| Incomplete risk | `risk-entry` | error |
+| Unknown ID | `broken-ref` | error |
+| Test plan out of date | `testplan-stale` | warning |
+
+`dropped` slices plan nothing and are not required to be complete.
+
+#### Strangler plan (`--with strangler`)
+
+```yaml
+tables:
+  - table: billing.invoices
+    writer: legacy           # legacy | new: exactly one
+    order: 1
+    handover: { to: new, date: 2027-02-01, owner: Jane Doe, slice: SL-02, status: planned }
+    verify: "`npm run test:grants -- billing.invoices`"
+```
+
+**One writer per table** (`single-writer`, error): each table appears once, comparing names without case, quotes or brackets (`[Billing].[Invoices]` is `billing.invoices`); `writer` is a single value; with `status: done` it equals `to`, and with `planned` it does not. A handover without `to`, `date`, `owner`, `slice` or `status` is an error (`handover`). Warnings: a planned date in the past, dates that contradict the order, no `verify`, a dropped slice, and an unqualified name that may be the same table as a qualified one.
+
+**Limit:** `check` validates the plan, not the database. That nothing else writes a table is only shown by the test named in `verify`, which engkit does not run.
+
+#### Data plan (`--with data`)
+
+One file per target table, with the field mapping, cleaning rules (`C-x`), transformations (`T-x`, such as 1:N splits or merged duplicates), control totals and how counts are taken:
+
+```yaml
+target: billing.invoices
+date: 2026-03-09
+owner: Jane Doe
+sources: [FACT.FACTURAS]
+fields:
+  - { from: FACT.FACTURAS.NUM, to: number }
+  - { from: FACT.FACTURAS.FLAG, dropped: unused, source: F-05 }
+cleaning:
+  - { id: C-1, rule: exclude voided invoices without amount, source: F-01 }
+transformations:
+  - { id: T-1, rule: one invoice per currency (1:N) }
+totals:
+  - { name: amount_cents }
+  - { name: tax_cents, difference: C-1 }     # the rule that explains an expected difference
+counts:
+  command: "`npm run counts -- invoices`"
+  results: counts/invoices.json
+```
+
+**engkit never connects to a database or runs your command.** Your script queries it and writes only numbers:
+
+```json
+{
+  "definition": "9c1f0a52b7de",
+  "taken_at": "2027-01-10",
+  "source": 10000,
+  "excluded": { "C-1": 120 },
+  "adjustments": { "T-1": 35 },
+  "target": 9915,
+  "totals": {
+    "amount_cents": { "source": 5000000, "target": 5000000 },
+    "tax_cents": { "source": 900000, "target": 891000 }
+  }
+}
+```
+
+`check` verifies **`source + sum(adjustments) − sum(excluded) = target`**. `excluded` cites cleaning rules and takes numbers from 0; `adjustments` are signed and cite `C-x` or `T-x` rules. `definition` comes from `engkit data hash <data file>` and identifies the mapping, rules, totals and command: after editing them the old results are reported as stale.
+
+| Condition | `check` rule | Severity |
+|---|---|---|
+| The equation does not hold, or `excluded` / `adjustments` cite an undeclared rule | `data-results` | error |
+| A total differs and has no `difference` rule; a declared total is missing or an undeclared one appears | `data-results` | error |
+| Anything but the fields above, or a value that is not a number | `data-results` | error |
+| Missing `target`, `sources` or rule text; a field without `to` or `dropped` (with reason); repeated table or rule | `data-plan` | error |
+| No `counts`, or no results file | `data-counts` | warning |
+| Results taken with another definition | `data-stale` | warning |
+
+Totals are compared as written (no rounding); exponents are not accepted. Messages never repeat a value of the results file. **Limit:** `check` trusts that the numbers came from the declared command.
+
+#### `engkit testplan [--slice <SL>] [--stdout] [--format md|json]`
+
+Writes the test plan: per slice, in order, a table of its tests (`PA`, title, rules, expected source, status) and its done criteria; then the global criteria, requirement verification, data counts, write handovers and **Gaps** (rules without a test or a slice, slices without a test, requirements and criteria without verification). It links each PA instead of copying it. `--stdout`, `--slice` and `--format json` only print. Exit code: `0` ok, `2` the project cannot be read.
 
 ### `engkit prompt`
 

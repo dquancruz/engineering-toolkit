@@ -9,12 +9,11 @@ import {
   DIR_KEY,
   ITEM_KINDS,
   PREFIX,
-  SOURCE_FIELDS,
-  SOURCE_TYPES,
   STATUSES,
   itemFilePattern,
 } from "../../legacy/model.js";
 import { generateRulesIndex } from "../../legacy/rules-index.js";
+import { adrStatuses, allQuestions as questionIds, openQuestions } from "../links.js";
 import { deletedFiles, shortSha } from "../git.js";
 import type { Project } from "../project.js";
 import { str } from "../project.js";
@@ -26,19 +25,9 @@ function codeReference(value: string, roots: string[]): boolean {
   return roots.some((root) => new RegExp(`(^|[^\\w-])${root}:[^\\s:]+:\\d+`).test(value));
 }
 
-export function openQuestions(project: Project): Set<string> {
-  const pending = project.docs.find((d) => d.key === "pending");
-  if (!pending) return new Set();
-  return new Set(
-    parsePendingEntries(visibleText(pending.text))
-      .filter((e) => e.fields["status"]?.value === "open")
-      .map((e) => e.id)
-  );
-}
-
 /**
- * `frontmatter`, `todo-field`, `status-date`, `unique-id`, `legacy-field`, `legacy-file`: each item and
- * source entry is well formed.
+ * `frontmatter`, `todo-field`, `status-date`, `unique-id`, `legacy-field`, `legacy-file`: each item is well
+ * formed.
  */
 export function checkLegacyDocuments(legacy: Legacy, report: Report): void {
   for (const file of legacy.unexpected) {
@@ -91,24 +80,6 @@ export function checkLegacyDocuments(legacy: Legacy, report: Report): void {
       }
     }
   }
-
-  const sources = legacy.sources;
-  if (!sources) return;
-  const seen = new Map<string, number>();
-  for (const entry of sources.entries) {
-    const first = seen.get(entry.id);
-    if (first !== undefined) report({ rule: "unique-id", file: sources.file, line: entry.line, message: `Duplicate ${entry.id} (first defined on line ${first}).` });
-    else seen.set(entry.id, entry.line);
-
-    for (const key of SOURCE_FIELDS) {
-      const field = entry.fields[key];
-      const line = field?.line ?? entry.line;
-      const fail = (message: string) => report({ rule: "source-entry", file: sources.file, line, message: `${entry.id}: ${message}` });
-      if (!field || isTodoOrEmpty(field.value)) fail(`"${key}" is missing or TODO.`);
-      else if (key === "type" && !(SOURCE_TYPES as readonly string[]).includes(field.value)) fail(`"type" must be one of ${SOURCE_TYPES.join(" | ")} (found: ${field.value}).`);
-      else if (key === "obtained_on" && !isRealDate(field.value)) fail(`"obtained_on" must be a real date in YYYY-MM-DD format (found: ${field.value}).`);
-    }
-  }
 }
 
 /** The relations between rules, tests, defects, sources, questions and ADRs. */
@@ -118,12 +89,10 @@ export function checkLegacyLinks(project: Project, legacy: Legacy, roots: string
     test: new Map(legacy.items.test.map((i) => [i.id, i])),
     defect: new Map(legacy.items.defect.map((i) => [i.id, i])),
   };
-  const sources = new Map((legacy.sources?.entries ?? []).map((e) => [e.id, e]));
+  const sources = new Map((project.sources?.entries ?? []).map((e) => [e.id, e]));
   const questions = openQuestions(project);
-  const allQuestions = new Set(
-    project.docs.filter((d) => d.key === "pending").flatMap((d) => parsePendingEntries(visibleText(d.text)).map((e) => e.id))
-  );
-  const adrs = new Map(project.adrs.map((a) => [`ADR-${String(a.number).padStart(4, "0")}`, str(a.fm?.data["status"])]));
+  const allQuestions = questionIds(project);
+  const adrs = adrStatuses(project);
 
   const tested = (key: "rules" | "defects", id: string) => legacy.items.test.some((t) => listField(t, key)?.includes(id));
   const finding = (rule: string, severity: Severity, item: LegacyItem, key: string, message: string) =>

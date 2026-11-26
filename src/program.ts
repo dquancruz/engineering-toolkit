@@ -6,7 +6,7 @@ import { runAdrAccept } from "./commands/adr.js";
 import { CheckSetupError, formatReport, runCheck } from "./commands/check.js";
 import { runIndex } from "./commands/index-cmd.js";
 import { runEvidenceAdd, runEvidenceUpdate, runNewItem, runRulesIndex, type NewItemOptions } from "./commands/legacy.js";
-import { AGENT_CHOICES, PROFILES, parseProfiles, runInitProfiles, type Profile } from "./commands/init.js";
+import { AGENT_CHOICES, PROFILES, parseExtras, parseProfiles, runInitProfiles, type Profile } from "./commands/init.js";
 import { runAgentTestGuards } from "./commands/agent.js";
 import { runBranch } from "./commands/branch.js";
 import { runChangelog } from "./commands/changelog.js";
@@ -15,6 +15,8 @@ import type { AgentChoice } from "./agent/install.js";
 import { runJiraOncall } from "./commands/jira-oncall.js";
 import { runJiraReport } from "./commands/jira-report.js";
 import { runPrompt } from "./commands/prompt.js";
+import { runDataHash, runNewSlice, runTestPlan, type NewSliceOptions, type TestPlanOptions } from "./commands/rebuild.js";
+import { runRequirements, type RequirementsOptions } from "./commands/requirements.js";
 import { PRESET_IDS } from "./prompt/model.js";
 import { PENDING_TYPES, runNewAdr, runNewPending, type PendingType } from "./commands/new.js";
 
@@ -55,6 +57,7 @@ export function createProgram(): Command {
     .option("--owner <name>", "owner written in the documents (default: git config user.name, else TODO)")
     .addOption(new Option("--agent <agent>", "subagents to create with the agent profile").choices([...AGENT_CHOICES]).default("both"))
     .option("--yes", "agent profile: write .claude/settings.json without asking")
+    .option("--with <plans>", "rebuild profile: optional plans, comma separated (strangler, data)")
     .option("--dry-run", "show what would be created or changed and write nothing")
     .option("--update-guard", "agent profile: replace .claude/hooks/engkit-guard.mjs if it differs (shows a diff first)")
     .addHelpText(
@@ -70,6 +73,10 @@ Profiles:
          (default: main, master; patterns like release/* work).
   legacy additive: the sources register (F-xx), folders for business rules (RN), acceptance tests (PA) and
          defects (D), and the rule index. "engkit check" then verifies their links and the code evidence.
+  requirements  additive: the document of non-functional requirements (RNF) and fixed constraints (RES),
+         and the sources register (F-xx) it shares with legacy. Works without legacy, for new systems.
+  rebuild  requirements + legacy (added when missing) + the rebuild plan, its vertical slices and the test
+         plan. --with strangler adds the single-writer plan; --with data the data migration plan.
 
 Existing files are never overwritten: they are reported and skipped.
 The language and the path of each document are stored in .engkit.json,
@@ -81,7 +88,7 @@ Examples:
   engkit init --profile base,agent --agent reviewer --dry-run
   engkit init --profile agent --yes`
     )
-    .action(async (opts: { profile: string; owner?: string; agent: AgentChoice; yes?: boolean; dryRun?: boolean; updateGuard?: boolean }) => {
+    .action(async (opts: { profile: string; owner?: string; agent: AgentChoice; with?: string; yes?: boolean; dryRun?: boolean; updateGuard?: boolean }) => {
       const profiles: Profile[] = parseProfiles(opts.profile);
       process.exitCode = await runInitProfiles(ctx.lang, {
         profiles,
@@ -90,6 +97,7 @@ Examples:
         ...(opts.yes ? { yes: true } : {}),
         ...(opts.dryRun ? { dryRun: true } : {}),
         ...(opts.updateGuard ? { updateGuard: true } : {}),
+        ...(opts.with !== undefined ? { extras: parseExtras(opts.with) } : {}),
       });
     });
 
@@ -191,6 +199,89 @@ Examples:
       runNewItem("defect", title, ctx.lang, opts);
     });
 
+  create
+    .command("slice")
+    .alias("rebanada")
+    .description("Create the next vertical slice of the rebuild plan")
+    .argument("<title>", "what the slice delivers")
+    .option("--rule <RN>", "business rule it covers (repeatable)", collect, [])
+    .option("--test <PA>", "acceptance test that checks it (repeatable)", collect, [])
+    .option(...owner)
+    .addHelpText("after", `\nExample:\n  engkit new slice "Issue an invoice" --rule RN-0001 --test PA-0001`)
+    .action((title: string, opts: NewSliceOptions) => {
+      runNewSlice(title, ctx.lang, opts);
+    });
+
+  program
+    .command("requirements")
+    .description("Collect non-functional requirements (RNF) and fixed constraints (RES)")
+    .option("--from <file>", "YAML or JSON with \"requirements\" and \"constraints\" lists; no questions are asked")
+    .option("--dry-run", "print the new entries and write nothing")
+    .option("--owner <name>", "owner of the entries without one (default: git config user.name, else TODO)")
+    .option("--allow-secrets", "write even if a possible secret was detected")
+    .addHelpText(
+      "after",
+      `
+New entries are appended with new IDs; existing ones are never changed, and one with the same category (or
+kind) and title is skipped. In the guided mode nothing is written until the end.
+
+--from file:
+  requirements:
+    - category: performance
+      title: Invoice search
+      status: confirmed          # draft (default) | confirmed | not-applicable
+      measure: p95 latency
+      target: <= 300 ms
+      verify: PA-0012
+      source: F-02
+  constraints:
+    - kind: region
+      title: Deployment region
+      value: eu-west-1
+      decided_by: Legal
+      origin: [ADR-0002]
+
+Exit code: 0 ok, 1 possible secret, 2 bad input or no terminal, 130 cancelled.`
+    )
+    .action(async (opts: RequirementsOptions) => {
+      process.exitCode = await runRequirements(ctx.lang, opts);
+    });
+
+  program
+    .command("testplan")
+    .description("Generate the test plan from the acceptance tests and the done criteria of the slices")
+    .option("--slice <SL>", "only one slice (printed, the file is not written)")
+    .option("--stdout", "print and write nothing")
+    .addOption(new Option("--format <format>", "output format; json is printed").choices(["md", "json"]).default("md"))
+    .addHelpText(
+      "after",
+      `
+Writes rebuild.testplan (docs/plan-de-pruebas.md or docs/test-plan.md). It links the tests instead of copying
+them, and ends with the gaps: rules without a test or a slice, slices without a test, and requirements and
+criteria without verification. "engkit check" warns when the file is out of date.
+
+Exit code: 0 ok, 2 the project cannot be read.
+
+Examples:
+  engkit testplan
+  engkit testplan --slice SL-01
+  engkit testplan --format json`
+    )
+    .action((opts: TestPlanOptions) => {
+      process.exitCode = runTestPlan(ctx.lang, opts);
+    });
+
+  const data = program.command("data").description("Data migration plan tools (engkit never connects to a database)");
+
+  data
+    .command("hash")
+    .description('Print the "definition" that the results file of a data plan must carry')
+    .argument("<file>", "data plan file")
+    .addHelpText("after", `\nExample:\n  engkit data hash docs/rebuild/data/invoices.md`)
+    .action((file: string) => {
+      process.exitCode = runDataHash(file);
+    });
+
   const evidence = program.command("evidence").description("Code evidence of business rules and defects (legacy profile)");
 
   evidence
@@ -273,6 +364,9 @@ rule-decision, rule-question, defect-evidence, legacy-field, evidence-invalid, e
 evidence-missing are errors or, for drafts, warnings; rule-untested, test-discarded-rule, defect-question,
 defect-untested, rule-deleted, legacy-file and the other evidence-* rules are warnings.
 Evidence whose root is not available is reported as not verified (evidence-unavailable).
+
+Requirements and rebuild profiles add their own rules (see the README), among them constraint-origin,
+single-writer, data-results (errors) and requirement-measurable, rule-unplanned, slice-untested (warnings).
 
 Exit code: 0 no errors, 1 errors found, 2 the project could not be checked (run "engkit init").
 

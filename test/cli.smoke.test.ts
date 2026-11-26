@@ -142,7 +142,8 @@ describe("engkit CLI smoke", () => {
   });
 });
 
-describe("engkit agent profile (CLI)", () => {
+// test-guards starts one process per case.
+describe("engkit agent profile (CLI)", { timeout: 60_000 }, () => {
   it("has help for init (profiles, --yes, --dry-run) and agent test-guards", () => {
     const init = run(["init", "--help"]);
     expect(init.status).toBe(0);

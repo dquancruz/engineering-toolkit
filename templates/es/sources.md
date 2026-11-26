@@ -19,7 +19,9 @@ De dónde sale cada dato. Una entrada por fuente, con el ID siguiente (F-01, F-0
 - method: cómo se obtuvo (entrevista, consulta, exportación, enlace...)
 
 El código (también procedimientos almacenados) va con `type: code`: sirve como evidencia, pero nunca como
-origen del resultado esperado de una prueba. No pegues datos personales ni secretos: enlaza a donde viven.
+origen del resultado esperado de una prueba.
+Este registro lo comparten los perfiles legacy y requirements: citan sus F-xx la evidencia, las pruebas,
+los requisitos y las restricciones. No pegues datos personales ni secretos: enlaza a donde viven.
 -->
 
 ## Entradas

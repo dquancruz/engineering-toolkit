@@ -3,8 +3,6 @@ import path from "node:path";
 import type { LegacyPaths } from "../config.js";
 import { extractTitle } from "../docs/adr.js";
 import { parseFrontmatter, type ParsedDoc } from "../docs/frontmatter.js";
-import { parseEntries, type PendingEntry } from "../docs/pending.js";
-import { visibleText } from "../check/text.js";
 import { DIR_KEY, ITEM_KINDS, itemFilePattern, type ItemKind } from "./model.js";
 
 export interface LegacyItem {
@@ -24,24 +22,10 @@ export interface Legacy {
   items: Record<ItemKind, LegacyItem[]>;
   /** Markdown files in the item folders whose name does not follow `<ID>-slug.md`. */
   unexpected: string[];
-  sources: { file: string; text: string; fm: ParsedDoc | null; entries: PendingEntry[] } | null;
-}
-
-/** Field values are read from the raw lines, so text written as `code` still counts. */
-export function parseSources(text: string): PendingEntry[] {
-  const raw = text.replace(/\r\n/g, "\n").split("\n");
-  const entries = parseEntries(visibleText(text), "F");
-  for (const entry of entries) {
-    for (const [key, field] of Object.entries(entry.fields)) {
-      const m = /^[-*]\s+\w+:\s*(.*)$/.exec(raw[field.line - 1] ?? "");
-      if (m) entry.fields[key] = { value: m[1]!.replace(/<!--.*?-->/g, "").trim(), line: field.line };
-    }
-  }
-  return entries;
 }
 
 export function loadLegacy(cwd: string, paths: LegacyPaths): Legacy {
-  const legacy: Legacy = { paths, items: { rule: [], test: [], defect: [] }, unexpected: [], sources: null };
+  const legacy: Legacy = { paths, items: { rule: [], test: [], defect: [] }, unexpected: [] };
 
   for (const kind of ITEM_KINDS) {
     const dir = paths[DIR_KEY[kind]];
@@ -63,16 +47,11 @@ export function loadLegacy(cwd: string, paths: LegacyPaths): Legacy {
     }
   }
 
-  const sources = path.join(cwd, paths.sources);
-  if (fs.existsSync(sources)) {
-    const text = fs.readFileSync(sources, "utf-8");
-    legacy.sources = { file: paths.sources, text, fm: parseFrontmatter(text), entries: parseSources(text) };
-  }
   return legacy;
 }
 
 /** A list field of the frontmatter: a scalar counts as a list of one. `null` when the type is wrong. */
-export function listField(item: LegacyItem, key: string): string[] | null {
+export function listField(item: Pick<LegacyItem, "fm">, key: string): string[] | null {
   const value = item.fm?.data[key];
   if (value === undefined || value === null || value === "") return [];
   const list = Array.isArray(value) ? value : [value];

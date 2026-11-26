@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { CONFIG_FILE, loadConfig, updateConfigFile } from "../config.js";
+import { CONFIG_FILE, loadConfig, migrateSourcesConfig, updateConfigFile } from "../config.js";
 import { resolveOwner, todayISO, type DocOptions } from "../docs/context.js";
 import { DEFAULT_PATHS, DOC_KEYS, TEMPLATE_DOCS, relativeLink, type DocPaths } from "../docs/files.js";
 import { yamlScalar } from "../docs/frontmatter.js";
@@ -10,10 +10,11 @@ import { readTemplate } from "../i18n/index.js";
 import { AGENT_CHOICES, installAgentProfile, type AgentChoice } from "../agent/install.js";
 import { generateIndex } from "./index-cmd.js";
 import { runInitLegacy } from "./legacy.js";
+import { REBUILD_EXTRAS, runInitRebuild, runInitRequirements, type RebuildExtra } from "./rebuild.js";
 
 export { AGENT_CHOICES };
 
-export const PROFILES = ["base", "agent", "legacy"] as const;
+export const PROFILES = ["base", "agent", "legacy", "requirements", "rebuild"] as const;
 export type Profile = (typeof PROFILES)[number];
 
 /** Parses `--profile base,agent`. */
@@ -29,6 +30,16 @@ export function parseProfiles(value: string): Profile[] {
   return out;
 }
 
+/** Parses `--with strangler,data`. */
+export function parseExtras(value: string): RebuildExtra[] {
+  const parts = [...new Set(value.split(",").map((p) => p.trim()).filter((p) => p !== ""))];
+  const unknown = parts.find((p) => !(REBUILD_EXTRAS as readonly string[]).includes(p));
+  if (unknown !== undefined || parts.length === 0) {
+    throw new Error(`Invalid --with "${unknown ?? value}". Use: ${REBUILD_EXTRAS.join(", ")}.`);
+  }
+  return parts as RebuildExtra[];
+}
+
 export interface InitOptions extends DocOptions {
   profiles?: Profile[];
   /** Print what would be created and write nothing. */
@@ -39,6 +50,8 @@ export interface InitProfilesOptions extends InitOptions {
   agent?: AgentChoice;
   yes?: boolean;
   updateGuard?: boolean;
+  /** Optional plans of the rebuild profile. */
+  extras?: RebuildExtra[];
   interactive?: boolean;
   confirm?: (message: string) => Promise<boolean>;
 }
@@ -132,8 +145,18 @@ export function runInit(lang: Lang, options: InitOptions = {}): InitResult {
 export async function runInitProfiles(lang: Lang, options: InitProfilesOptions = {}): Promise<number> {
   const profiles = options.profiles ?? ["base"];
   let code = 0;
+  if (options.extras?.length && !profiles.includes("rebuild")) throw new Error('--with only applies to "--profile rebuild".');
+  // projects created with 0.6.0 keep the sources register inside "legacy": move it to the shared section
+  const moved = migrateSourcesConfig(options.cwd ?? process.cwd(), options.dryRun === true);
+  if (moved !== null) {
+    console.log(`${options.dryRun ? "would " : ""}update  ${CONFIG_FILE}  (moved "legacy.sources" to "sources.doc": ${moved})`);
+  }
   if (profiles.includes("base")) runInit(lang, options);
   if (profiles.includes("legacy")) runInitLegacy(lang, options);
+  if (profiles.includes("requirements")) runInitRequirements(lang, options);
+  if (profiles.includes("rebuild")) {
+    runInitRebuild(lang, { ...options, legacyDone: profiles.includes("legacy"), requirementsDone: profiles.includes("requirements") });
+  }
   if (profiles.includes("agent")) {
     const result = await installAgentProfile(lang, {
       ...(options.cwd !== undefined ? { cwd: options.cwd } : {}),

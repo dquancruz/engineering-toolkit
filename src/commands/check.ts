@@ -4,6 +4,12 @@ import { gitState } from "../check/git.js";
 import { checkEvidence } from "../check/rules/evidence.js";
 import { checkLegacyDocuments, checkLegacyLinks, checkRuleDeleted, checkRulesIndexStale } from "../check/rules/legacy.js";
 import { EvidenceReader } from "../legacy/evidence.js";
+import { checkDataPlan } from "../check/rules/data.js";
+import { checkRebuildPlan, checkTestPlanStale } from "../check/rules/rebuild.js";
+import { checkRequirements } from "../check/rules/requirements.js";
+import { checkStrangler } from "../check/rules/strangler.js";
+import { checkSources } from "../check/rules/sources.js";
+import { todayISO } from "../docs/context.js";
 import { checkFrontmatter, checkStatusDates, checkTodoFields } from "../check/rules/documents.js";
 import { checkAdrDeleted, checkAdrImmutable, checkLogAppendOnly, gitLimitation } from "../check/rules/history.js";
 import { checkUniqueIds } from "../check/rules/ids.js";
@@ -21,6 +27,8 @@ export interface CheckOptions {
   strict?: boolean;
   /** With `strict`, an evidence root that is not available stays a warning. */
   allowUnavailableEvidence?: boolean;
+  /** Override "today" (YYYY-MM-DD), used for overdue handovers. */
+  today?: string;
 }
 
 export interface CheckResult {
@@ -65,6 +73,15 @@ export function runCheck(lang: Lang, options: CheckOptions = {}): CheckResult {
     checkLegacyLinks(project, project.legacy, [SELF_ROOT, ...Object.keys(roots)], report);
     checkRulesIndexStale(project, project.legacy, storedLang, report);
     unverified = checkEvidence(project.legacy, new EvidenceReader(cwd, roots), report);
+  }
+
+  checkSources(project, report);
+  checkRequirements(project, report);
+  if (project.rebuild) {
+    checkRebuildPlan(project, report);
+    checkStrangler(project, report, options.today ?? todayISO());
+    checkDataPlan(project, report);
+    checkTestPlanStale(project, storedLang, report);
   }
 
   const git = gitState(cwd);

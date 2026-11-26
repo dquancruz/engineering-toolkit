@@ -26,8 +26,8 @@ export function parsePendingEntries(visible: string): PendingEntry[] {
   return parseEntries(visible, "P");
 }
 
-/** Same format for any `### <prefix>-NN: title` register (pending items, evidence sources). */
-export function parseEntries(visible: string, prefix: "P" | "F"): PendingEntry[] {
+/** Same format for any `### <prefix>-NN: title` register (pending items, sources, requirements, risks). */
+export function parseEntries(visible: string, prefix: "P" | "F" | "RNF" | "RES" | "K"): PendingEntry[] {
   const pattern = new RegExp(`^###\\s+(${prefix}-\\d+)\\b\\s*:?\\s*(.*)$`);
   const entries: PendingEntry[] = [];
   let current: PendingEntry | null = null;

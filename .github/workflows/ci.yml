@@ -23,7 +23,7 @@ jobs:
       - run: npm test
       - run: npm audit --audit-level=moderate
 
-  # The agent guards and the git, .env and evidence commands run on the developer's machine, so they are tested
+  # The agent guards and the git, .env, legacy and rebuild commands run on the developer's machine, so they are tested
   # on Windows and macOS too. The rest of the suite still assumes Linux (see ROADMAP, "Future ideas").
   portability:
     runs-on: ${{ matrix.os }}
@@ -38,4 +38,4 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
-      - run: npx vitest run test/agent test/branch test/changelog test/env test/legacy
+      - run: npx vitest run test/agent test/branch test/changelog test/env test/legacy test/rebuild test/sources-compat.test.ts

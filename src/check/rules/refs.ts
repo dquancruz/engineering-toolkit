@@ -1,4 +1,5 @@
 import { parsePendingEntries } from "../../docs/pending.js";
+import { parseRegister } from "../../docs/register.js";
 import type { ItemKind } from "../../legacy/model.js";
 import type { Project } from "../project.js";
 import { str } from "../project.js";
@@ -13,14 +14,25 @@ interface RefKind {
   name: string;
   pattern: RegExp;
   ids: (project: Project) => Set<string>;
-  legacyOnly?: boolean;
+  /** The profile that has to be configured for these references to count. */
+  profile?: "legacy" | "sources" | "requirements" | "rebuild";
 }
+
+const registerKind = (name: "RNF" | "RES", profile: "requirements"): RefKind => ({
+  name,
+  pattern: new RegExp(`\\b${name}-\\d{2,}\\b`, "g"),
+  ids: (p) => {
+    const doc = p.docs.find((d) => d.key === "requirements");
+    return new Set(doc ? parseRegister(doc.text, name).map((e) => e.id) : []);
+  },
+  profile,
+});
 
 const legacyKind = (name: "RN" | "PA" | "D", kind: ItemKind): RefKind => ({
   name,
   pattern: new RegExp(`\\b${name}-\\d{4}\\b`, "g"),
   ids: (p) => new Set(p.legacy?.items[kind].map((i) => i.id)),
-  legacyOnly: true,
+  profile: "legacy",
 });
 
 const adrId = (n: number) => `ADR-${String(n).padStart(4, "0")}`;
@@ -46,17 +58,29 @@ const REF_KINDS: RefKind[] = [
   legacyKind("RN", "rule"),
   legacyKind("PA", "test"),
   legacyKind("D", "defect"),
-  { name: "F", pattern: /\bF-\d{2,}\b/g, ids: (p) => new Set(p.legacy?.sources?.entries.map((e) => e.id)), legacyOnly: true },
+  { name: "F", pattern: /\bF-\d{2,}\b/g, ids: (p) => new Set(p.sources?.entries.map((e) => e.id)), profile: "sources" },
+  registerKind("RNF", "requirements"),
+  registerKind("RES", "requirements"),
+  { name: "K", pattern: /\bK-\d{2,}\b/g, ids: (p) => new Set(p.rebuild?.risks.map((r) => r.id)), profile: "rebuild" },
+  { name: "SL", pattern: /\bSL-\d{2,}\b/g, ids: (p) => new Set(p.rebuild?.slices.map((s) => s.id)), profile: "rebuild" },
 ];
 
-/** `broken-ref`: every ADR-xxxx / P-xx (and, with the legacy profile, RN / PA / D / F) reference (body, supersedes, superseded_by) points to something that exists. */
+/** `broken-ref`: every ADR-xxxx / P-xx (and, with their profile, RN / PA / D / F / RNF / RES / K / SL) reference (body, supersedes, superseded_by) points to something that exists. */
 export function checkReferences(project: Project, report: Report): void {
-  const kinds = REF_KINDS.filter((kind) => project.legacy || !kind.legacyOnly);
+  const active = {
+    legacy: project.legacy !== null,
+    sources: project.sources !== null,
+    requirements: project.docs.some((d) => d.key === "requirements"),
+    rebuild: project.rebuild !== null,
+  };
+  const kinds = REF_KINDS.filter((kind) => !kind.profile || active[kind.profile]);
   const known = kinds.map((kind) => ({ kind, ids: kind.ids(project) }));
   const legacy = project.legacy;
   const legacyDocs = legacy ? Object.values(legacy.items).flat() : [];
 
-  for (const doc of [...project.docs, ...project.adrs, ...legacyDocs]) {
+  const rebuildDocs = project.rebuild ? [...project.rebuild.slices, ...project.rebuild.data] : [];
+
+  for (const doc of [...project.docs, ...project.adrs, ...legacyDocs, ...rebuildDocs]) {
     const lines = visibleText(doc.text).split("\n");
     lines.forEach((text, i) => {
       for (const { kind, ids } of known) {

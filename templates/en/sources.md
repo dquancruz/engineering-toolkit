@@ -19,7 +19,8 @@ Where each fact comes from. One entry per source, with the next ID (F-01, F-02, 
 - method: how it was obtained (interview, query, export, link...)
 
 Code (stored procedures too) is `type: code`: it can be evidence, but never the source of a test's expected
-result. Do not paste personal data or secrets: link to where they live.
+result. The legacy and requirements profiles share this register: evidence, tests, requirements and
+constraints cite its F-xx. Do not paste personal data or secrets: link to where they live.
 -->
 
 ## Entries
