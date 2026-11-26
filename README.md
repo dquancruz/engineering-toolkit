@@ -103,7 +103,7 @@ node dist/cli.js --lang en changelog v<previous tag> HEAD --release v<new versio
 git commit -am "chore(release): v<new version>"
 ```
 
-If more commits land during review, run the same `changelog` command with `--force` and commit it again, so the release commit stays last.
+If more commits land during review, run the same `changelog` command with `--force`. If the section changes (a `feat`, `fix`, `perf` or breaking commit), commit it again so the release commit stays last; commits of the types that are left out do not change it.
 
 **2. Merge** the PR once CI is green, with a **merge commit** (squash or rebase would rewrite the commit IDs listed in `CHANGELOG.md`).
 

@@ -16,7 +16,8 @@ async function installed(config?: object): Promise<string> {
   return dir;
 }
 
-describe("engkit agent test-guards", () => {
+// Each run starts one process per case, which takes several seconds on the Windows and macOS runners.
+describe("engkit agent test-guards", { timeout: 60_000 }, () => {
   it("passes on a fresh install (claude version may only warn)", async () => {
     await installed();
     const report = testGuards(dir);
