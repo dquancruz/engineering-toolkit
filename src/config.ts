@@ -13,7 +13,25 @@ export interface EngkitConfig {
   promptsDir?: string;
   /** Branches the agent guard protects from commits and pushes; `*` is a wildcard (default: main, master). */
   protectedBranches?: string[];
+  /** Settings of `engkit branch`; missing keys take the defaults. */
+  branch?: Partial<BranchConfig>;
 }
+
+export interface BranchConfig {
+  /** Prefixes allowed in branch names. */
+  types: string[];
+  defaultType: string;
+  /** Regular expression a ticket ID must match completely. */
+  ticketPattern: string;
+  requireTicket: boolean;
+}
+
+export const DEFAULT_BRANCH_CONFIG: BranchConfig = {
+  types: ["feature", "fix", "chore", "docs", "refactor", "test"],
+  defaultType: "feature",
+  ticketPattern: "[A-Z][A-Z0-9]+-\\d+",
+  requireTicket: false,
+};
 
 export const DEFAULT_PROTECTED_BRANCHES = ["main", "master"];
 
@@ -45,6 +63,53 @@ function validatePath(key: string, value: unknown, prefix = "paths."): string {
     );
   }
   return normalized;
+}
+
+const BRANCH_TYPE = /^[A-Za-z0-9][A-Za-z0-9_-]*$/;
+
+function validateBranch(value: unknown): Partial<BranchConfig> {
+  const fail = (message: string): never => {
+    throw new Error(`Invalid ${CONFIG_FILE}: ${message}`);
+  };
+  if (typeof value !== "object" || value === null || Array.isArray(value)) fail('"branch" must be an object');
+  const raw = value as Record<string, unknown>;
+  const unknown = Object.keys(raw).filter((k) => !(k in DEFAULT_BRANCH_CONFIG));
+  if (unknown.length > 0) fail(`unknown key(s) in "branch": ${unknown.join(", ")}. Valid keys: ${Object.keys(DEFAULT_BRANCH_CONFIG).join(", ")}`);
+
+  const out: Partial<BranchConfig> = {};
+  const { types, defaultType, ticketPattern, requireTicket } = raw;
+  if (types !== undefined) {
+    if (!Array.isArray(types) || types.length === 0 || !types.every((t) => typeof t === "string" && BRANCH_TYPE.test(t))) {
+      fail('"branch.types" must be a non-empty list of prefixes made of letters, numbers, "-" or "_"');
+    }
+    out.types = types as string[];
+  }
+  const effective = out.types ?? DEFAULT_BRANCH_CONFIG.types;
+  if (defaultType !== undefined) {
+    if (typeof defaultType !== "string" || !effective.includes(defaultType)) fail(`"branch.defaultType" must be one of: ${effective.join(", ")}`);
+    out.defaultType = defaultType as string;
+  }
+  if (ticketPattern !== undefined) {
+    if (typeof ticketPattern !== "string" || ticketPattern === "") fail('"branch.ticketPattern" must be a non-empty regular expression');
+    try {
+      new RegExp(`^(?:${ticketPattern as string})$`);
+    } catch {
+      fail('"branch.ticketPattern" is not a valid regular expression');
+    }
+    out.ticketPattern = ticketPattern as string;
+  }
+  if (requireTicket !== undefined) {
+    if (typeof requireTicket !== "boolean") fail('"branch.requireTicket" must be true or false');
+    out.requireTicket = requireTicket as boolean;
+  }
+  return out;
+}
+
+/** The configured branch settings over the defaults. Without "feature" in a custom list, the first type is the default. */
+export function branchConfig(config: EngkitConfig): BranchConfig {
+  const merged = { ...DEFAULT_BRANCH_CONFIG, ...config.branch };
+  if (!merged.types.includes(merged.defaultType)) merged.defaultType = merged.types[0]!;
+  return merged;
 }
 
 /** Reads `.engkit.json` from `cwd`. A missing file yields an empty config. */
@@ -87,6 +152,8 @@ export function loadConfig(cwd: string = process.cwd()): EngkitConfig {
     }
     config.protectedBranches = protectedBranches as string[];
   }
+
+  if (data["branch"] !== undefined) config.branch = validateBranch(data["branch"]);
   return config;
 }
 

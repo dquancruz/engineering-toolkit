@@ -7,6 +7,7 @@ import { CheckSetupError, formatReport, runCheck } from "./commands/check.js";
 import { runIndex } from "./commands/index-cmd.js";
 import { AGENT_CHOICES, PROFILES, parseProfiles, runInitProfiles, type Profile } from "./commands/init.js";
 import { runAgentTestGuards } from "./commands/agent.js";
+import { runBranch } from "./commands/branch.js";
 import type { AgentChoice } from "./agent/install.js";
 import { runJiraOncall } from "./commands/jira-oncall.js";
 import { runJiraReport } from "./commands/jira-report.js";
@@ -252,6 +253,36 @@ Examples:
     .addHelpText("after", "\nWrites the file stored as paths.decisions in .engkit.json (docs/DECISIONES.md or docs/DECISIONS.md).")
     .action(() => {
       runIndex(ctx.lang);
+    });
+
+  program
+    .command("branch")
+    .description("Create and switch to a branch named <type>/<TICKET>-<description>")
+    .argument("<words...>", "ticket ID (optional, first) and short description")
+    .option("--type <type>", "prefix: one of branch.types (default: branch.defaultType)")
+    .option("--ticket <id>", "ticket ID, instead of writing it first")
+    .option("--from <ref>", "base commit or branch (default: the current one)")
+    .option("--dry-run", "only print the name")
+    .addHelpText(
+      "after",
+      `
+.engkit.json (all keys optional):
+  { "branch": { "types": ["feature", "fix", "chore", "docs", "refactor", "test"],
+                "defaultType": "feature",
+                "ticketPattern": "[A-Z][A-Z0-9]+-\\\\d+",
+                "requireTicket": false } }
+
+It refuses a name that matches "protectedBranches" (ignoring case) or an existing branch.
+The name is printed on stdout.
+
+Exit code: 0 ok, 1 refused or git failed, 2 bad input.
+
+Examples:
+  engkit branch ABC-123 "Add pagination" --type fix   → fix/ABC-123-add-pagination
+  engkit branch update dependencies --type chore      → chore/update-dependencies`
+    )
+    .action((words: string[], opts: { type?: string; ticket?: string; from?: string; dryRun?: boolean }) => {
+      process.exitCode = runBranch(words, opts);
     });
 
   const jira = program.command("jira").description("Jira defect tools");
