@@ -161,6 +161,19 @@ Additive (`--profile base,agent` does both; `agent` alone leaves the documents u
 
 The patterns `.env*` live only in the hook because a deny rule on `.env.*` would also block `.env.example` and an allow rule cannot carve an exception out of a deny.
 
+**What asks for confirmation**
+
+| Command | Enforced by |
+|---|---|
+| `git clean` with `-f`, `-d`, `-x`, `-X` or `--force` (not a dry run) | `permissions.ask` + hook |
+| `git reset --hard` | `permissions.ask` + hook |
+| `git checkout .` / `-- .`, `git restore .` | `permissions.ask` + hook |
+| `git stash drop`, `git stash clear` | `permissions.ask` + hook |
+
+**Why `ask` and not `deny`.** These have legitimate uses (cleaning a build, dropping your own experiment), unlike `rm -rf` or a force push, which stay denied. They destroy work that git usually cannot recover, so a person should decide each time; a deny cannot be approved at the prompt and would force editing the settings. According to the [permissions documentation](https://code.claude.com/docs/en/permissions) rules are evaluated deny, then ask, then allow, so a broad `allow` such as `Bash(git *)` does not skip the question, and ask rules also prompt in `bypassPermissions`. In `dontAsk` they are denied; in a `-p` run with nobody to answer they are most likely denied too (inferred, not stated for ask rules).
+
+**Why both.** Rules match the command text, so `git -C dir reset --hard` or `sudo git clean -fd` do not match them. The hook parses the command and answers with `permissionDecision: "ask"`, following [PreToolUse decision control](https://code.claude.com/docs/en/hooks#pretooluse-decision-control) (read on 2026-11-26; that page has no literal `"ask"` example and states no minimum version, and what a hook `"ask"` does in `bypassPermissions` or `dontAsk` was not verified). A rule may still ask where the hook would not, for example `git clean -d -n`.
+
 **Protected branches** come from `.engkit.json` (`init` writes the default):
 
 ```json
@@ -169,7 +182,9 @@ The patterns `.env*` live only in the hook because a deny rule on `.env.*` would
 
 `*` is a wildcard. A custom list replaces the default one.
 
-**Merging `.claude/settings.json`.** The file is read as JSON (if it is not valid JSON, for example because of comments, nothing is changed). `permissions.deny` gets the missing rules appended; `allow`, `ask` and every other key are kept, as are the indentation and line endings. The hook group is identified by `engkit-guard.mjs`: it is added or updated in place, so running `init` again is safe. Then the **diff is printed** and you are asked to confirm (default: no). Without a terminal nothing is written unless you pass `--yes` (exit code 1). `--dry-run` prints what would be created and the diff, and writes nothing. The write is atomic. It warns if `permissions.defaultMode` is `bypassPermissions`. It does not touch `settings.local.json`.
+**Merging `.claude/settings.json`.** The file is read as JSON (if it is not valid JSON, for example because of comments, nothing is changed). `permissions.deny` and `permissions.ask` get the missing rules appended; `allow` and every other key are kept, as are the indentation and line endings. The hook group is identified by `engkit-guard.mjs`: it is added or updated in place, so running `init` again is safe. Then the **diff is printed** and you are asked to confirm (default: no). Without a terminal nothing is written unless you pass `--yes` (exit code 1). `--dry-run` prints what would be created and the diff, and writes nothing. The write is atomic. It warns if `permissions.defaultMode` is `bypassPermissions`. It does not touch `settings.local.json`.
+
+**Upgrading from 0.4.0:** run `engkit init --profile agent --update-guard` to add the ask rules and the new guard; until then `test-guards` fails.
 
 `--update-guard` replaces `.claude/hooks/engkit-guard.mjs` when it differs from the shipped version, showing a diff and asking first (without it, a changed script is reported and left alone).
 
@@ -183,7 +198,7 @@ A shell script would need a Bash version and a PowerShell version of a command p
 
 **Limits** (these are guards against accidents, not a security boundary, as the Claude Code permissions documentation says about Bash rules):
 
-- Scripts that delete or read files on their own (`python -c`, `node -e`), `find -delete`, `git clean`, aliases, shell variables and globs that expand to a secret file are not covered.
+- Scripts that delete or read files on their own (`python -c`, `node -e`), `find -delete`, git or shell aliases, shell variables and globs that expand to a secret file are not covered.
 - `echo .env` is blocked (a false positive on purpose); text inside a message such as `git commit -m "document .env"` is not.
 - Only `git commit` is guarded on protected branches; `git merge`, `cherry-pick`, `revert`, `am` and `pull` are not.
 - PowerShell and `cmd` commands (`Remove-Item -Recurse -Force`, `rd /s`) are not parsed.
@@ -195,8 +210,8 @@ A shell script would need a Bash version and a PowerShell version of a command p
 
 Checks the installation without risk. It starts the hook configured in `.claude/settings.json` like Claude Code does (command and args, JSON on stdin) with synthetic inputs and a throwaway git repository (on `main`, on a working branch, and on a sample branch per extra protected pattern) as working directory. **Nothing is executed**: the guard only receives the text of the command. It checks that:
 
-- every blocked case exits **2** with a reason, and every allowed one (`rm file`, `git push origin feature/x`, `cat .env.example`...) exits **0**;
-- `permissions.deny` has the rules, the hook has `"onFailure": "block"`, the script exists and `node` starts;
+- every blocked case exits **2** with a reason, every command that discards work exits **0** answering `"ask"`, and every allowed one (`rm file`, `git push origin feature/x`, `cat .env.example`...) exits **0**;
+- `permissions.deny` and `permissions.ask` have the rules, the hook has `"onFailure": "block"`, the script exists and `node` starts;
 - `claude --version` is at least **2.1.295** (a warning if it is older or `claude` is not installed).
 
 Exit code: `0` all good, `1` a check failed, `2` the guards are not installed. It cannot test Claude Code's own permission engine, only that the rules are there.

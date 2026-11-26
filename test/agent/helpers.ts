@@ -17,6 +17,7 @@ export function repoOn(branch: string, protectedBranches?: string[]): string {
 export interface GuardRun {
   status: number | null;
   stderr: string;
+  stdout: string;
 }
 
 /** Runs the guard exactly like Claude Code: a process, JSON on stdin. */
@@ -28,7 +29,7 @@ export function runGuard(toolName: string, toolInput: Record<string, unknown>, d
     encoding: "utf-8",
     env: { ...process.env, CLAUDE_PROJECT_DIR: dir },
   });
-  return { status: r.status, stderr: r.stderr };
+  return { status: r.status, stderr: r.stderr, stdout: r.stdout };
 }
 
 export const bash = (command: string, dir: string) => runGuard("Bash", { command }, dir);

@@ -1,14 +1,15 @@
-// engkit-guard v1
+// engkit-guard v2
 // PreToolUse hook for Claude Code, installed by `engkit init --profile agent`.
 // Do not edit by hand: `engkit init --profile agent --update-guard` replaces it (showing a diff).
 //
 // Reads the hook JSON from stdin and exits with:
-//   0  allowed
+//   0  allowed; or, with a JSON "permissionDecision": "ask" on stdout, the user is asked to confirm
+//      (https://code.claude.com/docs/en/hooks#pretooluse-decision-control)
 //   2  blocked (the reason goes to stderr, Claude Code shows it to the model)
 // Any internal error also exits with 2 (fail closed).
 //
 // These are guards against accidents, not a security boundary. They do not cover scripts
-// that delete or read files on their own (python -c, node -e), `find -delete`, `git clean`,
+// that delete or read files on their own (python -c, node -e), `find -delete`, git or shell
 // aliases, shell variables or globs that expand to a secret file.
 //
 // Zero dependencies; runs on Node 22+ on Linux, macOS and Windows.
@@ -246,7 +247,11 @@ function checkGit(args, ctx) {
     return;
   }
 
-  if (sub !== "push") return;
+  if (sub !== "push") {
+    const reason = discardReason(sub, rest);
+    if (reason !== null) ctx.asks.push(reason);
+    return;
+  }
 
   const positional = [];
   let forced = false;
@@ -296,6 +301,51 @@ function checkGit(args, ctx) {
       block(`${deleting ? "deleting" : "pushing to"} the protected branch "${t}" is not allowed. Push a working branch and open a pull request.`);
     }
   }
+}
+
+// ---------------------------------------------------------------- git commands that discard work
+
+/** Pathspecs that mean "everything under the current directory (or the repository)". */
+const WHOLE_TREE = new Set([".", "./", ":/"]);
+
+/** `git clean` that deletes (-f, -d, -x, -X, --force) and is not a dry run. */
+function cleanDeletes(args) {
+  let deletes = false;
+  for (let k = 0; k < args.length; k++) {
+    const a = args[k];
+    if (a === "--") break;
+    if (a === "--dry-run") return false;
+    if (a === "--force") deletes = true;
+    else if (a === "--exclude") k++;
+    else if (/^-[a-zA-Z]/.test(a)) {
+      for (let j = 1; j < a.length; j++) {
+        if (a[j] === "e") {
+          if (j === a.length - 1) k++; // -e <pattern>
+          break;
+        }
+        if (a[j] === "n") return false;
+        if ("fdxX".includes(a[j])) deletes = true;
+      }
+    }
+  }
+  return deletes;
+}
+
+/** Why the user should confirm this git subcommand, or null. These are legitimate but not recoverable. */
+function discardReason(sub, args) {
+  if (sub === "clean" && cleanDeletes(args)) return "git clean deletes untracked files";
+  if (sub === "reset") {
+    const end = args.indexOf("--");
+    if ((end === -1 ? args : args.slice(0, end)).includes("--hard")) return "git reset --hard discards uncommitted changes";
+  }
+  if ((sub === "checkout" || sub === "restore") && args.some((a) => WHOLE_TREE.has(a))) {
+    return `git ${sub} of the whole tree discards uncommitted changes`;
+  }
+  if (sub === "stash") {
+    const action = args.find((a) => !a.startsWith("-"));
+    if (action === "drop" || action === "clear") return `git stash ${action} deletes stashed changes`;
+  }
+  return null;
 }
 
 // ---------------------------------------------------------------- command analysis
@@ -366,7 +416,7 @@ function analyzeCommand(command, ctx, depth = 0) {
 /**
  * @param {{ tool_name?: string, tool_input?: unknown, cwd?: string }} input hook payload
  * @param {{ projectDir: string }} env
- * @returns {string | null} reason when blocked, otherwise null
+ * @returns {{ decision: "block" | "ask", reason: string } | null} null when the call is allowed
  */
 export function evaluate(input, env) {
   try {
@@ -378,8 +428,10 @@ export function evaluate(input, env) {
       const ctx = {
         cwd: path.resolve(input.cwd ?? env.projectDir),
         protectedBranches: loadProtected(env.projectDir),
+        asks: [],
       };
-      analyzeCommand(command, ctx);
+      analyzeCommand(command, ctx); // a block anywhere in the command throws, so it wins over any ask
+      if (ctx.asks.length > 0) return { decision: "ask", reason: [...new Set(ctx.asks)].join("; ") };
     } else {
       for (const s of collectStrings(toolInput)) {
         if (isSecretPath(s)) block(`${JSON.stringify(s)} is an .env file (only .env.example may be read or written)`);
@@ -387,8 +439,9 @@ export function evaluate(input, env) {
     }
     return null;
   } catch (e) {
-    if (e instanceof Block) return e.message;
-    return `engkit-guard failed (${e instanceof Error ? e.message : String(e)}); blocking to be safe`;
+    const reason =
+      e instanceof Block ? e.message : `engkit-guard failed (${e instanceof Error ? e.message : String(e)}); blocking to be safe`;
+    return { decision: "block", reason };
   }
 }
 
@@ -397,17 +450,28 @@ function readStdin() {
 }
 
 function main() {
-  let reason;
+  let result;
   try {
     const input = JSON.parse(readStdin());
     const projectDir = process.env.CLAUDE_PROJECT_DIR || input.cwd || process.cwd();
-    reason = evaluate(input, { projectDir });
+    result = evaluate(input, { projectDir });
   } catch (e) {
-    reason = `engkit-guard could not read its input (${e instanceof Error ? e.message : String(e)}); blocking to be safe`;
+    const reason = `engkit-guard could not read its input (${e instanceof Error ? e.message : String(e)}); blocking to be safe`;
+    result = { decision: "block", reason };
   }
-  if (reason !== null) {
-    process.stderr.write(`engkit-guard: blocked. ${reason}\n`);
+  if (result?.decision === "block") {
+    process.stderr.write(`engkit-guard: blocked. ${result.reason}\n`);
     process.exit(2);
+  }
+  if (result?.decision === "ask") {
+    const output = {
+      hookSpecificOutput: {
+        hookEventName: "PreToolUse",
+        permissionDecision: "ask",
+        permissionDecisionReason: `engkit-guard: ${result.reason}. Confirm to run it.`,
+      },
+    };
+    fs.writeSync(1, JSON.stringify(output) + "\n"); // synchronous: the process exits right after
   }
   process.exit(0);
 }

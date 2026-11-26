@@ -25,6 +25,25 @@ export const DENY_RULES = [
   ]),
 ];
 
+/**
+ * Ask rules: commands that are legitimate but destroy work git usually cannot recover, so a person
+ * decides (a deny could not be approved at the prompt). Rules match the command text, so forms such as
+ * `git -C dir reset --hard` are left to the hook, which also answers "ask".
+ * A trailing " *" that is the only wildcard also matches the bare command.
+ */
+export const ASK_RULES = [
+  ...["-f", "-d", "-x", "-X", "--force"].flatMap((flag) => [`Bash(git clean ${flag}*)`, `Bash(git clean * ${flag}*)`]),
+  "Bash(git reset --hard *)",
+  "Bash(git reset * --hard*)",
+  "Bash(git checkout .)",
+  "Bash(git checkout -- .)",
+  "Bash(git checkout * -- .)",
+  "Bash(git restore .)",
+  "Bash(git restore * .)",
+  "Bash(git stash drop *)",
+  "Bash(git stash clear *)",
+];
+
 export const HOOK_MATCHER = "Bash|Read|Edit|Write|MultiEdit|NotebookEdit|Grep|Glob";
 
 /** Exec form (no shell): the same entry works on Linux, macOS and Windows. */
@@ -85,15 +104,15 @@ export function mergeSettings(existing: string | null): MergeResult {
   }
   const warnings: string[] = [];
 
-  // permissions.deny: union, keeping what is there first
+  // permissions.deny and permissions.ask: union, keeping what is there first
   let permissions = data["permissions"];
   if (permissions === undefined) permissions = {};
   if (!isObject(permissions)) throw new SettingsError(`"permissions" in ${SETTINGS_FILE} must be an object. Nothing was changed.`);
-  let deny = permissions["deny"];
-  if (deny === undefined) deny = [];
-  if (!Array.isArray(deny)) throw new SettingsError(`"permissions.deny" in ${SETTINGS_FILE} must be an array. Nothing was changed.`);
-  const nextDeny = [...deny, ...DENY_RULES.filter((r) => !deny.includes(r))];
-  permissions["deny"] = nextDeny;
+  for (const [key, rules] of [["deny", DENY_RULES], ["ask", ASK_RULES]] as const) {
+    const current = permissions[key] ?? [];
+    if (!Array.isArray(current)) throw new SettingsError(`"permissions.${key}" in ${SETTINGS_FILE} must be an array. Nothing was changed.`);
+    permissions[key] = [...current, ...rules.filter((r) => !current.includes(r))];
+  }
   data["permissions"] = permissions;
   if (permissions["defaultMode"] === "bypassPermissions") {
     warnings.push(

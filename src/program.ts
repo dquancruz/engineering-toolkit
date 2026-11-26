@@ -99,7 +99,7 @@ Examples:
 Starts the configured hook like Claude Code does (command and args from .claude/settings.json, JSON on stdin)
 with synthetic inputs and a throwaway git repository as working directory. Nothing is executed:
 the guard only receives the text of the command. Checks that blocked cases exit 2 with a reason and
-allowed ones exit 0, that the deny rules and "onFailure": "block" are present, that the hook command
+allowed ones exit 0, that commands which discard work are answered with "ask", that the deny and ask rules and "onFailure": "block" are present, that the hook command
 exists and that "claude --version" is at least 2.1.295 (a warning if not).
 It cannot test Claude Code's own permission engine.
 

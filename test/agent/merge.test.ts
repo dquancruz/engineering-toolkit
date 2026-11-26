@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { unifiedDiff } from "../../src/agent/diff.js";
-import { DENY_RULES, GUARD_FILE, SettingsError, isGuardGroup, mergeSettings } from "../../src/agent/merge.js";
+import { ASK_RULES, DENY_RULES, GUARD_FILE, SettingsError, isGuardGroup, mergeSettings } from "../../src/agent/merge.js";
 
 const parse = (text: string) => JSON.parse(text) as Record<string, any>;
 
@@ -10,6 +10,7 @@ describe("mergeSettings", () => {
     expect(r.changed).toBe(true);
     const s = parse(r.text);
     expect(s.permissions.deny).toEqual(DENY_RULES);
+    expect(s.permissions.ask).toEqual(ASK_RULES);
     const group = s.hooks.PreToolUse[0];
     expect(group.hooks[0]).toEqual({
       type: "command",
@@ -47,6 +48,13 @@ describe("mergeSettings", () => {
     expect(s.hooks.PreToolUse).toHaveLength(2);
     expect(s.hooks.PreToolUse[0].hooks[0].command).toBe("my-hook.sh");
     expect(isGuardGroup(s.hooks.PreToolUse[1])).toBe(true);
+  });
+
+  it("appends the ask rules to the existing ones without duplicates", () => {
+    const existing = JSON.stringify({ permissions: { ask: ["Bash(npm publish *)", "Bash(git stash drop *)"] } });
+    const ask = parse(mergeSettings(existing).text).permissions.ask as string[];
+    expect(ask.slice(0, 2)).toEqual(["Bash(npm publish *)", "Bash(git stash drop *)"]);
+    expect([...ask].sort()).toEqual([...new Set([...ASK_RULES, "Bash(npm publish *)"])].sort());
   });
 
   it("is idempotent: a second merge changes nothing", () => {
@@ -90,6 +98,7 @@ describe("mergeSettings", () => {
     ["not an object", "[]"],
     ["permissions of the wrong type", '{"permissions": []}'],
     ["deny of the wrong type", '{"permissions": {"deny": "x"}}'],
+    ["ask of the wrong type", '{"permissions": {"ask": {}}}'],
     ["hooks of the wrong type", '{"hooks": []}'],
     ["PreToolUse of the wrong type", '{"hooks": {"PreToolUse": {}}}'],
   ])("refuses to merge: %s", (_name, text) => {
@@ -103,6 +112,39 @@ describe("mergeSettings", () => {
 
   it("treats an empty file as no settings", () => {
     expect(mergeSettings("  \n").changed).toBe(true);
+  });
+});
+
+/**
+ * Replica of the documented Bash rule matching (https://code.claude.com/docs/en/permissions): `*` matches
+ * anything, and a trailing " *" that is the only wildcard also matches the bare command. It checks that the
+ * patterns say what we mean; it does not test Claude Code's permission engine.
+ */
+function ruleMatches(rule: string, command: string): boolean {
+  const pattern = /^Bash\((.*)\)$/.exec(rule)![1]!;
+  const escape = (s: string) => s.replace(/[.+?^${}()|[\]\\]/g, "\\$&");
+  const optionalTail = pattern.endsWith(" *") && pattern.indexOf("*") === pattern.length - 1;
+  const source = optionalTail ? `${escape(pattern.slice(0, -2))}( .*)?` : pattern.split("*").map(escape).join(".*");
+  return new RegExp(`^${source}$`).test(command);
+}
+
+describe("ASK_RULES", () => {
+  const asks = (command: string) => ASK_RULES.some((r) => ruleMatches(r, command));
+
+  it.each([
+    "git clean -f", "git clean -fd", "git clean -xdf", "git clean -d", "git clean -x", "git clean -X",
+    "git clean --force", "git clean -q -fd", "git reset --hard", "git reset --hard origin/main",
+    "git reset -q --hard", "git checkout .", "git checkout -- .", "git checkout HEAD -- .",
+    "git restore .", "git restore --worktree .", "git stash drop", "git stash drop stash@{1}", "git stash clear",
+  ])("covers %s", (command) => expect(asks(command)).toBe(true));
+
+  it.each([
+    "git clean -n", "git reset --soft HEAD~1", "git reset", "git checkout main", "git checkout -- src/a.ts",
+    "git checkout .env.example", "git restore src/a.ts", "git stash", "git stash list", "git stash pop",
+  ])("leaves %s alone", (command) => expect(asks(command)).toBe(false));
+
+  it("does not overlap with the deny rules", () => {
+    expect(ASK_RULES.filter((r) => DENY_RULES.includes(r))).toEqual([]);
   });
 });
 
