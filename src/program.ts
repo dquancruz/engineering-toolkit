@@ -5,7 +5,9 @@ import { LANGS, type Lang } from "./i18n/index.js";
 import { runAdrAccept } from "./commands/adr.js";
 import { CheckSetupError, formatReport, runCheck } from "./commands/check.js";
 import { runIndex } from "./commands/index-cmd.js";
-import { PROFILES, runInit, type Profile } from "./commands/init.js";
+import { AGENT_CHOICES, PROFILES, parseProfiles, runInitProfiles, type Profile } from "./commands/init.js";
+import { runAgentTestGuards } from "./commands/agent.js";
+import type { AgentChoice } from "./agent/install.js";
 import { runJiraOncall } from "./commands/jira-oncall.js";
 import { runJiraReport } from "./commands/jira-report.js";
 import { runPrompt } from "./commands/prompt.js";
@@ -44,22 +46,70 @@ export function createProgram(): Command {
 
   program
     .command("init")
-    .description("Create the base documents (ADR template, log, CLAUDE.md, AGENTS.md, glossary, pending, design)")
-    .addOption(new Option("--profile <profile>", "document profile").choices([...PROFILES]).default("base"))
+    .description("Create the base documents (ADR template, log, CLAUDE.md, AGENTS.md, glossary, pending, design) and optional profiles")
+    .option("--profile <profiles>", `profiles to apply, comma separated (${PROFILES.join(", ")})`, "base")
     .option("--owner <name>", "owner written in the documents (default: git config user.name, else TODO)")
+    .addOption(new Option("--agent <agent>", "subagents to create with the agent profile").choices([...AGENT_CHOICES]).default("both"))
+    .option("--yes", "agent profile: write .claude/settings.json without asking")
+    .option("--dry-run", "show what would be created or changed and write nothing")
+    .option("--update-guard", "agent profile: replace .claude/hooks/engkit-guard.mjs if it differs (shows a diff first)")
     .addHelpText(
       "after",
       `
+Profiles:
+  base   the documents (default)
+  agent  additive: subagents in .claude/agents/ (reviewer: read-only; builder: edits and runs commands),
+         the guard hook in .claude/hooks/engkit-guard.mjs and the permissions and hooks in
+         .claude/settings.json. An existing settings.json is merged, never overwritten: the diff is
+         shown and confirmed first (--yes skips the question; without a terminal nothing is written
+         unless --yes). Protected branches come from "protectedBranches" in .engkit.json
+         (default: main, master; patterns like release/* work).
+
 Existing files are never overwritten: they are reported and skipped.
 The language and the path of each document are stored in .engkit.json,
 and "engkit new" and "engkit index" read the paths from there.
 
 Examples:
   engkit init
-  engkit init --lang en --owner "Jane Doe"`
+  engkit init --lang en --owner "Jane Doe"
+  engkit init --profile base,agent --agent reviewer --dry-run
+  engkit init --profile agent --yes`
     )
-    .action((opts: { profile: Profile; owner?: string }) => {
-      runInit(ctx.lang, { profile: opts.profile, owner: opts.owner });
+    .action(async (opts: { profile: string; owner?: string; agent: AgentChoice; yes?: boolean; dryRun?: boolean; updateGuard?: boolean }) => {
+      const profiles: Profile[] = parseProfiles(opts.profile);
+      process.exitCode = await runInitProfiles(ctx.lang, {
+        profiles,
+        owner: opts.owner,
+        agent: opts.agent,
+        ...(opts.yes ? { yes: true } : {}),
+        ...(opts.dryRun ? { dryRun: true } : {}),
+        ...(opts.updateGuard ? { updateGuard: true } : {}),
+      });
+    });
+
+  const agent = program.command("agent").description("Claude Code agent profile tools");
+
+  agent
+    .command("test-guards")
+    .description("Check that the guards are installed and block what they should, without running anything dangerous")
+    .option("--json", "print the result as JSON")
+    .addHelpText(
+      "after",
+      `
+Starts the configured hook like Claude Code does (command and args from .claude/settings.json, JSON on stdin)
+with synthetic inputs and a throwaway git repository as working directory. Nothing is executed:
+the guard only receives the text of the command. Checks that blocked cases exit 2 with a reason and
+allowed ones exit 0, that the deny rules and "onFailure": "block" are present, that the hook command
+exists and that "claude --version" is at least 2.1.295 (a warning if not).
+It cannot test Claude Code's own permission engine.
+
+Exit code: 0 all good, 1 a check failed, 2 the guards are not installed.
+
+Example:
+  engkit agent test-guards --json`
+    )
+    .action((opts: { json?: boolean }) => {
+      process.exitCode = runAgentTestGuards({ ...(opts.json ? { json: true } : {}) });
     });
 
   const create = program.command("new").description("Create a new document from a template");

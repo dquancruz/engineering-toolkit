@@ -11,7 +11,11 @@ export interface EngkitConfig {
   paths?: Partial<Record<DocKey, string>>;
   /** Folder for `engkit prompt --save` (default: `prompts`). */
   promptsDir?: string;
+  /** Branches the agent guard protects from commits and pushes; `*` is a wildcard (default: main, master). */
+  protectedBranches?: string[];
 }
+
+export const DEFAULT_PROTECTED_BRANCHES = ["main", "master"];
 
 function readRaw(cwd: string): Record<string, unknown> {
   const file = path.join(cwd, CONFIG_FILE);
@@ -71,6 +75,18 @@ export function loadConfig(cwd: string = process.cwd()): EngkitConfig {
 
   const promptsDir = data["promptsDir"];
   if (promptsDir !== undefined) config.promptsDir = validatePath("promptsDir", promptsDir, "");
+
+  const protectedBranches = data["protectedBranches"];
+  if (protectedBranches !== undefined) {
+    if (
+      !Array.isArray(protectedBranches) ||
+      protectedBranches.length === 0 ||
+      !protectedBranches.every((b) => typeof b === "string" && b.trim() !== "" && !/\s/.test(b))
+    ) {
+      throw new Error(`Invalid ${CONFIG_FILE}: "protectedBranches" must be a non-empty list of branch names or patterns (e.g. "release/*")`);
+    }
+    config.protectedBranches = protectedBranches as string[];
+  }
   return config;
 }
 

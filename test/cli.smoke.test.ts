@@ -141,3 +141,43 @@ describe("engkit CLI smoke", () => {
     expect(blocked.stderr).not.toContain(token);
   });
 });
+
+describe("engkit agent profile (CLI)", () => {
+  it("has help for init (profiles, --yes, --dry-run) and agent test-guards", () => {
+    const init = run(["init", "--help"]);
+    expect(init.status).toBe(0);
+    for (const flag of ["--profile <profiles>", "--agent <agent>", "--yes", "--dry-run", "--update-guard"]) {
+      expect(init.stdout).toContain(flag);
+    }
+    const tg = run(["agent", "test-guards", "--help"]);
+    expect(tg.status).toBe(0);
+    expect(tg.stdout).toContain("--json");
+    expect(tg.stdout).toContain("2.1.295");
+  });
+
+  it("rejects an unknown profile", () => {
+    const r = run(["init", "--profile", "base,nope"], tmpDir());
+    expect(r.status).toBe(1);
+    expect(r.stderr).toContain('Invalid profile "nope"');
+  });
+
+  it("init --profile agent: no terminal and no --yes writes no settings (exit 1); --yes writes; test-guards passes", () => {
+    const dir = tmpDir();
+    const no = run(["--lang", "en", "init", "--profile", "agent"], dir);
+    expect(no.status).toBe(1);
+    expect(fs.existsSync(path.join(dir, ".claude/settings.json"))).toBe(false);
+    expect(no.stdout).toContain("Run again with --yes");
+
+    const yes = run(["--lang", "en", "init", "--profile", "agent", "--yes"], dir);
+    expect(yes.status).toBe(0);
+    expect(fs.existsSync(path.join(dir, ".claude/settings.json"))).toBe(true);
+
+    const guards = run(["agent", "test-guards", "--json"], dir);
+    expect(guards.status).toBe(0);
+    expect((JSON.parse(guards.stdout) as { ok: boolean }).ok).toBe(true);
+  });
+
+  it("agent test-guards exits 2 when nothing is installed", () => {
+    expect(run(["agent", "test-guards"], tmpDir()).status).toBe(2);
+  });
+});
