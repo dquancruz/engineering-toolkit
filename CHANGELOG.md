@@ -1,5 +1,11 @@
 # Changelog
 
+## [v0.7.0] - 2026-11-26
+
+### Features
+
+- add the requirements and rebuild profiles with engkit requirements and testplan (7dcc4c7)
+
 ## [v0.6.0] - 2026-11-26
 
 ### Features
