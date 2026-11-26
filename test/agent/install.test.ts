@@ -127,7 +127,7 @@ describe("agent profile install", () => {
     await install(dir, { yes: true });
     const file = path.join(dir, ".claude/hooks/engkit-guard.mjs");
     const shipped = fs.readFileSync(file, "utf-8");
-    fs.writeFileSync(file, shipped.replace("engkit-guard v1", "engkit-guard v0"));
+    fs.writeFileSync(file, shipped.replace("engkit-guard v2", "engkit-guard v0"));
 
     const kept = await install(dir, { yes: true });
     expect(kept.out).toContain("use --update-guard");

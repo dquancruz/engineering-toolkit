@@ -3,7 +3,8 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { DEFAULT_PROTECTED_BRANCHES, loadConfig } from "../config.js";
-import { DENY_RULES, GUARD_FILE, SETTINGS_FILE, isGuardGroup } from "./merge.js";
+import { matchesBranch } from "../git/branches.js";
+import { ASK_RULES, DENY_RULES, GUARD_FILE, SETTINGS_FILE, isGuardGroup } from "./merge.js";
 
 export const MIN_CLAUDE_VERSION = "2.1.295";
 
@@ -28,7 +29,7 @@ interface Case {
   name: string;
   tool: string;
   input: Record<string, unknown>;
-  expect: "block" | "allow";
+  expect: "block" | "ask" | "allow";
   repo: Repo;
   /** Only meaningful when this branch is protected (a custom protectedBranches list may not include it). */
   needs?: string;
@@ -80,6 +81,36 @@ const CASES: Case[] = [
   bash("cat .env", "cat .env", "block"),
   bash("source .env.production", "source .env.production", "block"),
   bash("redirect into .env", "echo X=1 > .env", "block"),
+  bash("git clean -f", "git clean -f", "ask"),
+  bash("git clean -fd", "git clean -fd", "ask"),
+  bash("git clean -xdf", "git clean -xdf", "ask"),
+  bash("git clean -d after another flag", "git clean -q -d", "ask"),
+  bash("git clean -X", "git clean -X", "ask"),
+  bash("git clean --force", "git clean --force", "ask"),
+  bash("git -C . clean -fd", "git -C . clean -fd", "ask"),
+  bash("git clean behind sudo", "sudo git clean -fd", "ask"),
+  bash("git reset --hard", "git reset --hard", "ask"),
+  bash("git reset -q --hard HEAD~1", "git reset -q --hard HEAD~1", "ask"),
+  bash("git -C . reset --hard", "git -C . reset --hard", "ask"),
+  bash("git reset --hard inside sh -c", "sh -c 'git reset --hard'", "ask"),
+  bash("git checkout -- .", "git checkout -- .", "ask"),
+  bash("git checkout .", "git checkout .", "ask"),
+  bash("git checkout HEAD -- .", "git checkout HEAD -- .", "ask"),
+  bash("git restore .", "git restore .", "ask"),
+  bash("git restore --staged --worktree .", "git restore --staged --worktree .", "ask"),
+  bash("git stash drop", "git stash drop", "ask"),
+  bash("git stash clear", "git stash clear", "ask"),
+  bash("git stash drop after &&", "npm test && git stash drop stash@{0}", "ask"),
+  bash("rm -rf wins over an ask", "git reset --hard && rm -rf build", "block"),
+  bash("git clean -n (dry run)", "git clean -n", "allow"),
+  bash("git clean -nfd (dry run)", "git clean -nfd", "allow"),
+  bash("git reset --soft", "git reset --soft HEAD~1", "allow"),
+  bash("git checkout of a branch", "git checkout feature/x", "allow"),
+  bash("git checkout of one file", "git checkout -- src/index.ts", "allow"),
+  bash("git restore of one file", "git restore src/index.ts", "allow"),
+  bash("git stash list", "git stash list", "allow"),
+  bash("git stash pop", "git stash pop", "allow"),
+  bash("commit message mentioning reset --hard", 'git commit -m "explain git reset --hard"', "allow"),
   bash("rm file", "rm old.txt", "allow"),
   bash("rm -r directory", "rm -r build", "allow"),
   bash("rm -f file", "rm -f old.txt", "allow"),
@@ -102,11 +133,6 @@ const CASES: Case[] = [
 ];
 
 // ---------------------------------------------------------------- helpers
-
-/** Same matching as the guard: `*` is a wildcard. */
-function matches(branch: string, patterns: string[]): boolean {
-  return patterns.some((p) => new RegExp("^" + p.replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*") + "$").test(branch));
-}
 
 /** `2.1.331 (Claude Code)` -> [2, 1, 331] */
 export function parseVersion(text: string): number[] | null {
@@ -137,6 +163,20 @@ function makeSandbox(base: string, name: string, branch: string, protectedBranch
 /** A branch name that a pattern like `release/*` matches. */
 function sampleBranch(pattern: string): string {
   return pattern.replace(/\*/g, "x");
+}
+
+/** What the hook decided, read as Claude Code documents it. `null`: none of the three valid answers. */
+function outcome(status: number | null, stdout: string, stderr: string): Case["expect"] | null {
+  if (status === 2) return stderr !== "" ? "block" : null;
+  if (status !== 0) return null;
+  if (stdout.trim() === "") return "allow";
+  try {
+    const o = (JSON.parse(stdout) as { hookSpecificOutput?: Record<string, unknown> }).hookSpecificOutput;
+    const reason = o?.["permissionDecisionReason"];
+    return o?.["hookEventName"] === "PreToolUse" && o["permissionDecision"] === "ask" && typeof reason === "string" && reason !== "" ? "ask" : null;
+  } catch {
+    return null;
+  }
 }
 
 // ---------------------------------------------------------------- the check
@@ -180,9 +220,17 @@ export function testGuards(cwd: string): GuardsReport {
     hook["onFailure"] === "block" ? undefined : "without it a crashed or timed-out guard lets the action through"
   );
 
-  const deny = ((settings["permissions"] as Record<string, unknown> | undefined)?.["deny"] as unknown[] | undefined) ?? [];
-  const missing = DENY_RULES.filter((r) => !deny.includes(r));
-  add("setup", "permissions.deny rules", missing.length === 0 ? "pass" : "fail", missing.length === 0 ? undefined : `missing: ${missing.join(", ")}`);
+  const permissions = settings["permissions"] as Record<string, unknown> | undefined;
+  for (const [key, rules] of [["deny", DENY_RULES], ["ask", ASK_RULES]] as const) {
+    const present = Array.isArray(permissions?.[key]) ? (permissions[key] as unknown[]) : [];
+    const missing = rules.filter((r) => !present.includes(r));
+    add(
+      "setup",
+      `permissions.${key} rules`,
+      missing.length === 0 ? "pass" : "fail",
+      missing.length === 0 ? undefined : `missing: ${missing.join(", ")}. Run "engkit init --profile agent" to add them.`
+    );
+  }
 
   const scriptPath = path.join(cwd, GUARD_FILE);
   const hasScript = fs.existsSync(scriptPath);
@@ -225,7 +273,7 @@ export function testGuards(cwd: string): GuardsReport {
       return dir;
     };
 
-    const cases = CASES.filter((c) => c.needs === undefined || matches(c.needs, effective));
+    const cases = CASES.filter((c) => c.needs === undefined || matchesBranch(c.needs, effective));
     // Patterns beyond the defaults (e.g. release/*): committing on a matching branch must be blocked.
     for (const pattern of effective) {
       if (DEFAULT_PROTECTED_BRANCHES.includes(pattern)) continue;
@@ -241,15 +289,15 @@ export function testGuards(cwd: string): GuardsReport {
       const dir = sandboxFor(c.repo);
       const payload = JSON.stringify({ hook_event_name: "PreToolUse", tool_name: c.tool, tool_input: c.input, cwd: dir });
       const r = run(command, args, { cwd: dir, input: payload, env: { ...process.env, CLAUDE_PROJECT_DIR: dir }, timeout });
-      const blocked = r.status === 2;
       const stderr = (r.stderr ?? "").trim();
-      if (c.expect === "block") {
-        if (blocked && stderr !== "") add("guard", `blocks: ${c.name}`, "pass");
-        else add("guard", `blocks: ${c.name}`, "fail", `expected exit 2 with a reason, got exit ${r.status ?? "none"}${stderr ? `: ${stderr}` : ""}`);
-      } else if (r.status === 0) {
-        add("guard", `allows: ${c.name}`, "pass");
+      const got = outcome(r.status, r.stdout ?? "", stderr);
+      const verb = c.expect === "block" ? "blocks" : c.expect === "ask" ? "asks" : "allows";
+      if (got === c.expect) {
+        add("guard", `${verb}: ${c.name}`, "pass");
       } else {
-        add("guard", `allows: ${c.name}`, "fail", `expected exit 0, got exit ${r.status ?? "none"}${stderr ? `: ${stderr}` : ""}`);
+        const wanted = { block: "exit 2 with a reason", ask: 'exit 0 with permissionDecision "ask"', allow: "exit 0 with no decision" }[c.expect];
+        const outdated = c.expect === "ask" && got === "allow" ? ' (an older guard? run "engkit init --profile agent --update-guard")' : "";
+        add("guard", `${verb}: ${c.name}`, "fail", `expected ${wanted}, got exit ${r.status ?? "none"}${stderr ? `: ${stderr}` : ""}${outdated}`);
       }
     }
   } finally {
@@ -267,7 +315,7 @@ export function formatGuardsReport(report: GuardsReport): string {
   const passed = report.items.filter((i) => i.status === "pass").length;
   lines.push("", `${passed} passed, ${failed} failed, ${warned} warnings.`);
   lines.push(
-    "Note: this checks the hook and that the deny rules are present. It cannot test Claude Code's own permission engine; use a live check for that."
+    "Note: this checks the hook and that the deny and ask rules are present. It cannot test Claude Code's own permission engine; use a live check for that."
   );
   return lines.join("\n");
 }

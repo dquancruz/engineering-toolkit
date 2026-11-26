@@ -16,7 +16,8 @@ async function installed(config?: object): Promise<string> {
   return dir;
 }
 
-describe("engkit agent test-guards", () => {
+// Each run starts one process per case, which takes several seconds on the Windows and macOS runners.
+describe("engkit agent test-guards", { timeout: 60_000 }, () => {
   it("passes on a fresh install (claude version may only warn)", async () => {
     await installed();
     const report = testGuards(dir);
@@ -50,6 +51,36 @@ describe("engkit agent test-guards", () => {
     const report = testGuards(dir);
     expect(report.code).toBe(1);
     expect(report.items.find((i) => i.name === "permissions.deny rules")?.detail).toContain("Bash(git push -f *)");
+  });
+
+  it("fails when an ask rule was removed", async () => {
+    await installed();
+    const file = path.join(dir, ".claude/settings.json");
+    const s = JSON.parse(fs.readFileSync(file, "utf-8"));
+    s.permissions.ask = s.permissions.ask.filter((r: string) => r !== "Bash(git stash clear *)");
+    fs.writeFileSync(file, JSON.stringify(s));
+    const report = testGuards(dir);
+    expect(report.code).toBe(1);
+    expect(report.items.find((i) => i.name === "permissions.ask rules")?.detail).toContain("Bash(git stash clear *)");
+  });
+
+  it("detects an older guard that never asks, and suggests --update-guard", async () => {
+    await installed();
+    // behaves like v1 for these commands: exit 0 and no decision
+    fs.writeFileSync(path.join(dir, ".claude/hooks/engkit-guard.mjs"), "process.exit(0);\n");
+    const failed = testGuards(dir).items.filter((i) => i.status === "fail" && i.name.startsWith("asks:"));
+    expect(failed.length).toBeGreaterThan(10);
+    expect(failed[0]!.detail).toContain("--update-guard");
+  });
+
+  it("does not accept a deny where an ask is expected", async () => {
+    await installed();
+    fs.writeFileSync(
+      path.join(dir, ".claude/hooks/engkit-guard.mjs"),
+      `console.log(JSON.stringify({ hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: "deny", permissionDecisionReason: "no" } }));\n`
+    );
+    const report = testGuards(dir);
+    expect(report.items.some((i) => i.status === "pass" && i.name.startsWith("asks:"))).toBe(false);
   });
 
   it('fails when onFailure is not "block"', async () => {

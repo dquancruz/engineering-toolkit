@@ -1,3 +1,4 @@
+import { checklistPromptItems, loadGenericChecklist, type PromptItems } from "../checklists/generic.js";
 import type { Lang } from "../i18n/index.js";
 import type { Asker, Choice } from "./asker.js";
 import { buildPrompt, type BuiltPrompt } from "./build.js";
@@ -5,6 +6,8 @@ import type { Checklist } from "./checklist.js";
 import {
   ELEMENT_IDS,
   PRESET_IDS,
+  SUGGESTED_CHECKLIST,
+  addPromptItems,
   isListElement,
   normalizeAnswers,
   type ElementId,
@@ -22,6 +25,10 @@ export interface InteractiveContext {
   info: ProjectInfo | null;
   envScan: boolean;
   allowSecrets: boolean;
+  /** Prompt items of the checklists given with `--checklist`, pre-filled like a preset. */
+  extra?: PromptItems[];
+  /** The `--checklist` values, so the same checklist is not offered again. */
+  requested?: string[];
 }
 
 const isToken = (item: string) => item.startsWith("@");
@@ -130,6 +137,22 @@ async function review(asker: Asker, ctx: InteractiveContext, answers: PromptAnsw
   }
 }
 
+/** Offers the checklist that fits the preset (default: no). Returns its prompt items when accepted. */
+async function offerChecklist(asker: Asker, ctx: InteractiveContext, preset: PresetId): Promise<PromptItems | null> {
+  const id = SUGGESTED_CHECKLIST[preset];
+  if (id === null || ctx.requested?.some((spec) => spec.split(":")[0] === id)) return null;
+  const checklist = loadGenericChecklist(id, ctx.lang);
+  const add = await asker.confirm({ message: `Also add the limits and verification of "${checklist.title}"?`, initialValue: false });
+  if (!add) return null;
+  if (checklist.variants.length === 0) return checklistPromptItems(id, ctx.lang);
+  const variant = await asker.select<string>({
+    message: "What kind of change is it?",
+    options: [{ value: "none", label: "Only the common items" }, ...checklist.variants.map((v) => ({ value: v.id, label: v.title }))],
+    initialValue: "none",
+  });
+  return checklistPromptItems(variant === "none" ? id : `${id}:${variant}`, ctx.lang);
+}
+
 /**
  * Guided mode: preset, then each element with its question, example and checks, then a review of
  * the warnings. The preset's limits and verification are pre-filled and editable, so the returned
@@ -148,12 +171,13 @@ export async function runInteractive(asker: Asker, ctx: InteractiveContext): Pro
     initialValue: "none",
   });
 
-  const answers: PromptAnswers = {};
+  const items = [...(ctx.extra ?? [])];
   if (preset !== "none") {
-    const p = ctx.checklist.presets[preset];
-    answers.limits = [...p.limits];
-    answers.verify = [...p.verify];
+    const offered = await offerChecklist(asker, ctx, preset);
+    if (offered) items.push(offered);
   }
+  let answers: PromptAnswers = addPromptItems({}, items);
+  if (preset !== "none") answers = addPromptItems(answers, [ctx.checklist.presets[preset]]);
 
   for (const id of ELEMENT_IDS) await askElement(asker, ctx, id, answers);
 

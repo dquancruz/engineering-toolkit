@@ -5,6 +5,15 @@ export type ElementId = (typeof ELEMENT_IDS)[number];
 export const PRESET_IDS = ["research", "feature", "bugfix", "refactor", "review"] as const;
 export type PresetId = (typeof PRESET_IDS)[number];
 
+/** Checklist the guided mode offers for each preset (never added without asking). */
+export const SUGGESTED_CHECKLIST: Record<PresetId, "code-review" | "definition-of-done" | null> = {
+  research: null,
+  feature: "definition-of-done",
+  bugfix: "definition-of-done",
+  refactor: "definition-of-done",
+  review: "code-review",
+};
+
 /** Elements whose value is a list of items; the others are free text. */
 export const LIST_ELEMENTS = ["material", "limits", "verify"] as const;
 export type ListElementId = (typeof LIST_ELEMENTS)[number];
@@ -54,6 +63,16 @@ export function applyPreset(a: PromptAnswers, preset: { limits: string[]; verify
     limits: [...preset.limits, ...(a.limits ?? [])],
     verify: [...preset.verify, ...(a.verify ?? [])],
   });
+}
+
+/** Puts checklist items before the user's own; with `applyPreset` afterwards the preset stays first. */
+export function addPromptItems(a: PromptAnswers, items: { limits: string[]; verify: string[] }[]): PromptAnswers {
+  if (items.length === 0) return a;
+  return {
+    ...a,
+    limits: [...items.flatMap((i) => i.limits), ...(a.limits ?? [])],
+    verify: [...items.flatMap((i) => i.verify), ...(a.verify ?? [])],
+  };
 }
 
 /** Text of an element as a list of lines (list items are one line each). */

@@ -29,11 +29,16 @@ engineering-toolkit/
 │   ├── check/                  engkit check: project loader, git helpers and rules
 │   ├── prompt/                 engkit prompt: checklist parser, warnings, secrets, interactive flow
 │   ├── agent/                  agent profile: settings.json merge, diff, install, guard checks
+│   ├── git/                    git runner and protected branch matching
+│   ├── changelog/              Conventional Commits parser, sections and CHANGELOG.md editing
+│   ├── env/                    .env variable name reader (never returns values)
+│   ├── checklists/             parser of the checklists used by `engkit prompt --checklist`
 │   └── commands/               one module per command
 ├── templates/                  es/en document templates; agent/guard.mjs is the Claude Code guard hook
 ├── test/                       vitest tests and fixtures
 ├── knowledge/                  Reference notes
 ├── checklists/                 Checklists (es/en); ai-prompt.md is the source of `engkit prompt`
+├── CHANGELOG.md                Changes per release, generated with `engkit changelog`
 ├── ROADMAP.md                  Phases and status
 └── README.md
 ```
@@ -51,11 +56,11 @@ The CLI is not published to npm. `dist/` is not versioned, so releases ship a pr
 **Main method: install the tarball from a GitHub Release**
 
 ```bash
-npm i -g https://github.com/dquancruz/engineering-toolkit/releases/download/v0.3.0/engineering-toolkit-0.3.0.tgz
+npm i -g https://github.com/dquancruz/engineering-toolkit/releases/download/v0.5.0/engineering-toolkit-0.5.0.tgz
 engkit --help
 ```
 
-npm may print an `install-scripts` warning about `prepare`; it is harmless because the tarball already contains the built `dist/`. Replace `0.3.0` (in both places) with the version you want. Releases are listed at <https://github.com/dquancruz/engineering-toolkit/releases>. A release is created by pushing a `v*` tag; the workflow in `.github/workflows/release.yml` runs the tests, runs `npm pack` and attaches the `.tgz`. The tag must match the version in `package.json`.
+npm may print an `install-scripts` warning about `prepare`; it is harmless because the tarball already contains the built `dist/`. Replace `0.5.0` (in both places) with the version you want. Releases are listed at <https://github.com/dquancruz/engineering-toolkit/releases>. A release is created by pushing a `v*` tag; the workflow in `.github/workflows/release.yml` runs the tests, runs `npm pack` and attaches the `.tgz`. The tag must match the version in `package.json`; see [Release cycle](#release-cycle).
 
 **Alternative: clone and link** (for development)
 
@@ -83,6 +88,51 @@ Development:
 ```bash
 npm test             # builds, then runs vitest
 npx tsc --noEmit
+```
+
+### Release cycle
+
+One phase is one branch and one PR, and each phase ends in a release. There is no separate release PR.
+
+**1. Last commit of the phase branch.** Bump the version, update the install URLs in this README and add the changelog section:
+
+```bash
+npm version <new version> --no-git-tag-version      # package.json and package-lock.json
+npm run build
+node dist/cli.js --lang en changelog v<previous tag> HEAD --release v<new version>
+git commit -am "chore(release): v<new version>"
+```
+
+If more commits land during review, run the same `changelog` command with `--force`. If the section changes (a `feat`, `fix`, `perf` or breaking commit), commit it again so the release commit stays last; commits of the types that are left out do not change it.
+
+**2. Merge** the PR once CI is green, with a **merge commit** (squash or rebase would rewrite the commit IDs listed in `CHANGELOG.md`).
+
+**3. Pull:**
+
+```bash
+git switch main && git pull --ff-only
+```
+
+**4. Verify** before tagging:
+
+```bash
+git log -1                                          # the merge of the PR
+node -p "require('./package.json').version"         # the new version
+gh run list --branch main --limit 3                 # CI is green on that commit
+```
+
+**5. Tag** and push only the tag:
+
+```bash
+git tag v<new version>
+git push origin v<new version>
+```
+
+**6. Check the release.** `release.yml` runs the tests, checks that the tag matches `package.json`, builds the `.tgz` and creates the GitHub Release. Its notes are `engkit changelog <previous tag> <tag> --stdout` plus a compare link (GitHub's generated notes if there is no previous tag).
+
+```bash
+gh run watch
+gh release view v<new version>                      # includes engineering-toolkit-<new version>.tgz
 ```
 
 ### Global options
@@ -161,6 +211,19 @@ Additive (`--profile base,agent` does both; `agent` alone leaves the documents u
 
 The patterns `.env*` live only in the hook because a deny rule on `.env.*` would also block `.env.example` and an allow rule cannot carve an exception out of a deny.
 
+**What asks for confirmation**
+
+| Command | Enforced by |
+|---|---|
+| `git clean` with `-f`, `-d`, `-x`, `-X` or `--force` (not a dry run) | `permissions.ask` + hook |
+| `git reset --hard` | `permissions.ask` + hook |
+| `git checkout .` / `-- .`, `git restore .` | `permissions.ask` + hook |
+| `git stash drop`, `git stash clear` | `permissions.ask` + hook |
+
+**Why `ask` and not `deny`.** These have legitimate uses (cleaning a build, dropping your own experiment), unlike `rm -rf` or a force push, which stay denied. They destroy work that git usually cannot recover, so a person should decide each time; a deny cannot be approved at the prompt and would force editing the settings. According to the [permissions documentation](https://code.claude.com/docs/en/permissions) rules are evaluated deny, then ask, then allow, so a broad `allow` such as `Bash(git *)` does not skip the question, and ask rules also prompt in `bypassPermissions`. In `dontAsk` they are denied; in a `-p` run with nobody to answer they are most likely denied too (inferred, not stated for ask rules).
+
+**Why both.** Rules match the command text, so `git -C dir reset --hard` or `sudo git clean -fd` do not match them. The hook parses the command and answers with `permissionDecision: "ask"`, following [PreToolUse decision control](https://code.claude.com/docs/en/hooks#pretooluse-decision-control) (read on 2026-11-26; that page has no literal `"ask"` example and states no minimum version, and what a hook `"ask"` does in `bypassPermissions` or `dontAsk` was not verified). A rule may still ask where the hook would not, for example `git clean -d -n`.
+
 **Protected branches** come from `.engkit.json` (`init` writes the default):
 
 ```json
@@ -169,7 +232,9 @@ The patterns `.env*` live only in the hook because a deny rule on `.env.*` would
 
 `*` is a wildcard. A custom list replaces the default one.
 
-**Merging `.claude/settings.json`.** The file is read as JSON (if it is not valid JSON, for example because of comments, nothing is changed). `permissions.deny` gets the missing rules appended; `allow`, `ask` and every other key are kept, as are the indentation and line endings. The hook group is identified by `engkit-guard.mjs`: it is added or updated in place, so running `init` again is safe. Then the **diff is printed** and you are asked to confirm (default: no). Without a terminal nothing is written unless you pass `--yes` (exit code 1). `--dry-run` prints what would be created and the diff, and writes nothing. The write is atomic. It warns if `permissions.defaultMode` is `bypassPermissions`. It does not touch `settings.local.json`.
+**Merging `.claude/settings.json`.** The file is read as JSON (if it is not valid JSON, for example because of comments, nothing is changed). `permissions.deny` and `permissions.ask` get the missing rules appended; `allow` and every other key are kept, as are the indentation and line endings. The hook group is identified by `engkit-guard.mjs`: it is added or updated in place, so running `init` again is safe. Then the **diff is printed** and you are asked to confirm (default: no). Without a terminal nothing is written unless you pass `--yes` (exit code 1). `--dry-run` prints what would be created and the diff, and writes nothing. The write is atomic. It warns if `permissions.defaultMode` is `bypassPermissions`. It does not touch `settings.local.json`.
+
+**Upgrading from 0.4.0:** run `engkit init --profile agent --update-guard` to add the ask rules and the new guard; until then `test-guards` fails.
 
 `--update-guard` replaces `.claude/hooks/engkit-guard.mjs` when it differs from the shipped version, showing a diff and asking first (without it, a changed script is reported and left alone).
 
@@ -183,7 +248,7 @@ A shell script would need a Bash version and a PowerShell version of a command p
 
 **Limits** (these are guards against accidents, not a security boundary, as the Claude Code permissions documentation says about Bash rules):
 
-- Scripts that delete or read files on their own (`python -c`, `node -e`), `find -delete`, `git clean`, aliases, shell variables and globs that expand to a secret file are not covered.
+- Scripts that delete or read files on their own (`python -c`, `node -e`), `find -delete`, git or shell aliases, shell variables and globs that expand to a secret file are not covered.
 - `echo .env` is blocked (a false positive on purpose); text inside a message such as `git commit -m "document .env"` is not.
 - Only `git commit` is guarded on protected branches; `git merge`, `cherry-pick`, `revert`, `am` and `pull` are not.
 - PowerShell and `cmd` commands (`Remove-Item -Recurse -Force`, `rd /s`) are not parsed.
@@ -195,8 +260,8 @@ A shell script would need a Bash version and a PowerShell version of a command p
 
 Checks the installation without risk. It starts the hook configured in `.claude/settings.json` like Claude Code does (command and args, JSON on stdin) with synthetic inputs and a throwaway git repository (on `main`, on a working branch, and on a sample branch per extra protected pattern) as working directory. **Nothing is executed**: the guard only receives the text of the command. It checks that:
 
-- every blocked case exits **2** with a reason, and every allowed one (`rm file`, `git push origin feature/x`, `cat .env.example`...) exits **0**;
-- `permissions.deny` has the rules, the hook has `"onFailure": "block"`, the script exists and `node` starts;
+- every blocked case exits **2** with a reason, every command that discards work exits **0** answering `"ask"`, and every allowed one (`rm file`, `git push origin feature/x`, `cat .env.example`...) exits **0**;
+- `permissions.deny` and `permissions.ask` have the rules, the hook has `"onFailure": "block"`, the script exists and `node` starts;
 - `claude --version` is at least **2.1.295** (a warning if it is older or `claude` is not installed).
 
 Exit code: `0` all good, `1` a check failed, `2` the guards are not installed. It cannot test Claude Code's own permission engine, only that the rules are there.
@@ -272,7 +337,7 @@ Use it in CI:
 - uses: actions/checkout@v4
   with:
     fetch-depth: 0        # full history, needed by adr-immutable and log-append-only
-- run: npm i -g https://github.com/dquancruz/engineering-toolkit/releases/download/v0.3.0/engineering-toolkit-0.3.0.tgz
+- run: npm i -g https://github.com/dquancruz/engineering-toolkit/releases/download/v0.5.0/engineering-toolkit-0.5.0.tgz
 - run: engkit check --strict
 ```
 
@@ -299,6 +364,7 @@ engkit prompt --preset bugfix --goal "Fix the 500 on POST /orders" \
 | `--preset <id>` | `research`, `feature`, `bugfix`, `refactor` or `review`: adds typical limits and verification before yours |
 | `--goal`, `--context`, `--autonomy`, `--done`, `--response` | One value per element |
 | `--material`, `--limit`, `--verify` | Repeatable |
+| `--checklist <id>` | Repeatable: add the limits and verification of a checklist (see below) |
 | `--save [name]` | Save the prompt and its answers (see below) |
 | `--no-gitignore` | Do not add the prompts folder to `.gitignore` |
 | `--allow-secrets` | Print and save even if a possible secret is detected |
@@ -335,11 +401,93 @@ response: A 3-line summary and a table of changed files.
 
 In files and flags use `@adr:ADR-0003`, `@pending:P-04` and `@claude`. A reference that does not resolve is an error (exit 2), and so is an ADR that is not accepted (use its path as plain text to include it anyway). Without those tokens nothing is added automatically.
 
+**Checklists.** `--checklist <id>` (or `<id>:<variant>`) adds the short "For a prompt" block of a [checklist](checklists/README.md) to the limits and verification, after the preset's items and before yours. It is never automatic: in guided mode the one that fits the preset is offered, and the default answer is no.
+
+| Checklist | Variants | Offered with preset |
+|---|---|---|
+| `code-review` | `feature`, `bugfix`, `refactor`, `docs`, `dependencies` | `review` (asks the PR type) |
+| `definition-of-done` | | `feature`, `bugfix`, `refactor` |
+| `system-design` | | only with the flag |
+| `threat-model` | | only with the flag |
+
+With only `--checklist` the mode is still guided, with the items pre-filled. A saved answers file contains the added items, so `--from` rebuilds the same prompt without the flag.
+
 **Secrets.** Before anything is printed or saved the prompt is checked for private keys, AWS, GitHub, Anthropic, OpenAI, Slack, Google and Stripe keys, JWTs, URLs with credentials, `api_key=`/`password=`-style assignments, and for **values from your `.env` files** (variables whose name suggests a secret, or whose value looks like a token; `.env.example` is ignored). If one is found, **nothing is printed or saved**, the findings are shown on stderr masked (`ghp_***`, or `.env:API_TOKEN`, never the value) and the exit code is 1. `--allow-secrets` overrides it. This is a heuristic, not a replacement for a real secret scanner. The `.env` files are only read in memory to compare; use `--no-env-scan` to skip it.
 
 **Saving.** `--save [name]` writes `prompts/YYYY-MM-DD-<name>.md` and a `.yaml` with the answers next to it, never overwriting a file; `engkit prompt --from prompts/<file>.yaml` rebuilds the same prompt. In a git repository the folder is added to `.gitignore` the first time (and the command says so): generated prompts are working artifacts, may carry internal context, and only point to your documents instead of copying them. To keep one, move its `.yaml` to a versioned folder. Change the folder with `"promptsDir": "docs/prompts"` in `.engkit.json`.
 
 Exit codes: **0** ok, **1** blocked (secret, or warnings with `--strict`), **2** bad input or no terminal (use `--from` or flags), **130** cancelled.
+
+### `engkit branch [ticket] <description...>`
+
+Creates and switches to `<type>/<TICKET>-<description>`, or `<type>/<description>` without a ticket. The name is printed on stdout.
+
+```bash
+engkit branch ABC-123 "Agregar paginación" --type fix   # fix/ABC-123-agregar-paginacion
+engkit branch update dependencies --type chore          # chore/update-dependencies
+engkit branch "Add login" --dry-run                     # only prints feature/add-login
+```
+
+| Option | Description |
+|---|---|
+| `--type <type>` | Prefix. Default: `branch.defaultType` |
+| `--ticket <id>` | Ticket ID; without it the first word is used if it matches the pattern |
+| `--from <ref>` | Base commit or branch (no upstream is set) |
+| `--dry-run` | Only print the name |
+
+Settings in `.engkit.json`, all optional (these are the defaults):
+
+```json
+{
+  "branch": {
+    "types": ["feature", "fix", "chore", "docs", "refactor", "test"],
+    "defaultType": "feature",
+    "ticketPattern": "[A-Z][A-Z0-9]+-\\d+",
+    "requireTicket": false
+  }
+}
+```
+
+`ticketPattern` must match the whole ID and is case-sensitive: with the default, `abc-123` is part of the description. With `"requireTicket": true` a branch without a ticket is refused. The description is lower-cased, loses its accents and is cut at 60 characters. If a custom `types` list lacks `feature`, its first entry is the default.
+
+It **refuses** to create a branch whose name matches `protectedBranches` (compared ignoring case, also with `--dry-run`) or that already exists. Exit code: **0** ok, **1** refused or git failed, **2** bad input.
+
+### `engkit changelog <from> <to>`
+
+Adds a section to `CHANGELOG.md` from the [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/) in `<from>..<to>`.
+
+```bash
+engkit --lang en changelog v1.1.0 HEAD --release v1.2.0
+engkit changelog v1.1.0 v1.2.0 --stdout
+engkit changelog v1.0.0 --from-start       # first release: everything up to v1.0.0
+```
+
+| Option | Description |
+|---|---|
+| `--release <name>` | Heading name. Default: `<to>` if it is a tag, else `Unreleased` |
+| `--from-start` | Take only `<to>` and read its whole history |
+| `--stdout` | Print the section and write nothing |
+| `--force` | Rewrite the section when the release is already in the file |
+| `--all` | Also list `docs`, `refactor`, `test`, `build`, `ci`, `style`, `chore` and `revert` |
+
+Sections: breaking changes (`type!:` or a `BREAKING CHANGE:` footer, whatever the type), features, fixes, performance and **other**, which holds every message that does not follow the convention or has an unknown type, so nothing is dropped silently. Merge commits are skipped, and the number of commits left out by type is reported on stderr. The section date is the date of the `<to>` commit, so the same history gives the same text. New sections go above the previous releases and no other line changes. Headings follow `--lang`. `@name` is wrapped in backticks and `<` is escaped, so publishing the text notifies nobody.
+
+Exit code: **0** ok, **1** the release is already in the file, **2** bad input or shallow clone.
+
+### `engkit env example` and `engkit env check [files...]`
+
+Work with the **names** of the variables in `.env*` files. **Values are never printed or written**: output has only variable names, file names, line numbers and fixed messages.
+
+- `env example` creates `.env.example` with `NAME=` lines from `.env` and `.env.*`, or appends the missing names to it. Existing lines are not changed; values and comments are not copied. It does not write through a symlink.
+- `env check` lists what each file lacks compared with `.env.example` (without one, with all the compared files together) and warns about variables that are not in the example. A variable with an empty value counts as present. `--json` prints `{ ok, reference, files[], errors[] }`.
+
+Files ending in `.example`, `.sample`, `.template`, `.dist`, `.bak`, `.orig`, `.swp`, `.swo` or `~` are not sources.
+
+**It fails closed.** Quoted multi-line values and PEM blocks are skipped as values. Any line that cannot be read for certain (unknown syntax, unclosed quote, unquoted multi-line value, backslash continuation) makes that file yield no names: only `file:line` and the reason are shown, and `env example` writes nothing. **Limit:** an unquoted multi-line secret is invalid dotenv; it is detected in the usual cases, but a continuation line that looks exactly like a valid assignment cannot be told apart from one. Quote multi-line values.
+
+Exit code: **0** ok, **1** missing variables (`check`), **2** a file could not be read, or there is nothing to do.
+
+With the [agent profile](#agent-profile-engkit-init---profile-agent), an agent can run `engkit env check` (it prints names only), but the guard blocks commands that name an `.env` file.
 
 ### `engkit jira report <csv> [person]`
 
@@ -420,7 +568,7 @@ Defaults: name `Oncall Engineer`, sprint `Current Sprint`. Output file: `oncall_
 
 ## 🗺️ Roadmap
 
-Knowledge notes and checklists below do not exist yet.
+Knowledge notes below do not exist yet.
 
 ### Knowledge
 
@@ -441,10 +589,7 @@ See [ROADMAP.md](ROADMAP.md) for the phased plan of the `engkit` CLI and its sta
 
 ### Checklists
 
-- Code review
-- Definition of Done
-- System design
-- Threat model
+Code review, Definition of Done, system design and threat model are available in [`checklists/`](checklists/README.md).
 
 ---
 

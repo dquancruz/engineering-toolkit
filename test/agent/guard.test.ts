@@ -108,7 +108,7 @@ describe("engkit-guard: Bash commands that must be allowed", () => {
   ];
   it.each(allowed)("%s", (command) => {
     const r = bash(command, feature);
-    expect(r).toEqual({ status: 0, stderr: "" });
+    expect(r).toEqual({ status: 0, stderr: "", stdout: "" });
   });
 });
 
@@ -215,5 +215,38 @@ describe("engkit-guard: failing closed", () => {
 
   it("has a version header", () => {
     expect(fs.readFileSync(guardScript, "utf-8").split(/\r?\n/)[0]).toMatch(/^\/\/ engkit-guard v\d+$/);
+  });
+});
+
+describe("engkit-guard: commands that discard work ask for confirmation", () => {
+  it("answers with the documented PreToolUse JSON and exit 0", () => {
+    const r = bash("git reset --hard", feature);
+    expect(r.status).toBe(0);
+    expect(JSON.parse(r.stdout)).toEqual({
+      hookSpecificOutput: {
+        hookEventName: "PreToolUse",
+        permissionDecision: "ask",
+        permissionDecisionReason: expect.stringContaining("git reset --hard"),
+      },
+    });
+  });
+
+  it.each(["git clean -e keep -f", "git -c core.x=1 clean -fdx", "timeout 5 git stash clear", 'echo "$(git restore .)"', "git checkout -f ."])(
+    "asks: %s",
+    (command) => {
+      expect(JSON.parse(bash(command, feature).stdout).hookSpecificOutput.permissionDecision).toBe("ask");
+    }
+  );
+
+  it.each(["git clean -e -f -n", "git clean -efoo", "git reset -- --hard", 'echo "git stash drop"'])("stays silent: %s", (command) => {
+    const r = bash(command, feature);
+    expect(r.status).toBe(0);
+    expect(r.stdout).toBe("");
+  });
+
+  it("blocks, without asking, when the command also does something blocked", () => {
+    const r = bash("git stash drop; git push --force", feature);
+    expect(r.status).toBe(2);
+    expect(r.stdout).toBe("");
   });
 });

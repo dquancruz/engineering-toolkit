@@ -7,6 +7,9 @@ import { CheckSetupError, formatReport, runCheck } from "./commands/check.js";
 import { runIndex } from "./commands/index-cmd.js";
 import { AGENT_CHOICES, PROFILES, parseProfiles, runInitProfiles, type Profile } from "./commands/init.js";
 import { runAgentTestGuards } from "./commands/agent.js";
+import { runBranch } from "./commands/branch.js";
+import { runChangelog } from "./commands/changelog.js";
+import { runEnvCheck, runEnvExample } from "./commands/env.js";
 import type { AgentChoice } from "./agent/install.js";
 import { runJiraOncall } from "./commands/jira-oncall.js";
 import { runJiraReport } from "./commands/jira-report.js";
@@ -99,7 +102,7 @@ Examples:
 Starts the configured hook like Claude Code does (command and args from .claude/settings.json, JSON on stdin)
 with synthetic inputs and a throwaway git repository as working directory. Nothing is executed:
 the guard only receives the text of the command. Checks that blocked cases exit 2 with a reason and
-allowed ones exit 0, that the deny rules and "onFailure": "block" are present, that the hook command
+allowed ones exit 0, that commands which discard work are answered with "ask", that the deny and ask rules and "onFailure": "block" are present, that the hook command
 exists and that "claude --version" is at least 2.1.295 (a warning if not).
 It cannot test Claude Code's own permission engine.
 
@@ -213,6 +216,7 @@ Examples:
     .option("--done <text>", "how you will know it is finished (must be checkable)")
     .option("--verify <item>", "command or step that checks the result (repeatable)", collect, [])
     .option("--response <text>", "shape of the answer you want")
+    .option("--checklist <id>", "add the limits and verification of a checklist, <id> or <id>:<variant> (repeatable)", collect, [])
     .option("--save [name]", "save the prompt and its answers to the prompts folder (git-ignored by default)")
     .option("--no-gitignore", "do not add the prompts folder to .gitignore")
     .option("--allow-secrets", "print and save even if a possible secret was detected")
@@ -223,6 +227,10 @@ Examples:
       `
 Without --from or element flags it asks one question per element (needs a terminal).
 The prompt is printed to stdout; warnings, questions and messages go to stderr.
+
+Checklists: code-review (variants feature, bugfix, refactor, docs, dependencies), definition-of-done,
+system-design and threat-model. Their prompt items go after the preset's and before yours. The guided
+mode offers the one that fits the preset (default: no). --checklist alone keeps the guided mode.
 
 Project integration (needs .engkit.json): the guided mode offers accepted ADRs and open
 pending items as material, and CLAUDE.md as a limit. They are added as paths, never copied.
@@ -252,6 +260,106 @@ Examples:
     .addHelpText("after", "\nWrites the file stored as paths.decisions in .engkit.json (docs/DECISIONES.md or docs/DECISIONS.md).")
     .action(() => {
       runIndex(ctx.lang);
+    });
+
+  program
+    .command("branch")
+    .description("Create and switch to a branch named <type>/<TICKET>-<description>")
+    .argument("<words...>", "ticket ID (optional, first) and short description")
+    .option("--type <type>", "prefix: one of branch.types (default: branch.defaultType)")
+    .option("--ticket <id>", "ticket ID, instead of writing it first")
+    .option("--from <ref>", "base commit or branch (default: the current one)")
+    .option("--dry-run", "only print the name")
+    .addHelpText(
+      "after",
+      `
+.engkit.json (all keys optional):
+  { "branch": { "types": ["feature", "fix", "chore", "docs", "refactor", "test"],
+                "defaultType": "feature",
+                "ticketPattern": "[A-Z][A-Z0-9]+-\\\\d+",
+                "requireTicket": false } }
+
+It refuses a name that matches "protectedBranches" (ignoring case) or an existing branch.
+The name is printed on stdout.
+
+Exit code: 0 ok, 1 refused or git failed, 2 bad input.
+
+Examples:
+  engkit branch ABC-123 "Add pagination" --type fix   → fix/ABC-123-add-pagination
+  engkit branch update dependencies --type chore      → chore/update-dependencies`
+    )
+    .action((words: string[], opts: { type?: string; ticket?: string; from?: string; dryRun?: boolean }) => {
+      process.exitCode = runBranch(words, opts);
+    });
+
+  program
+    .command("changelog")
+    .description("Add the Conventional Commits between two refs to CHANGELOG.md")
+    .argument("<refs...>", "<from> <to>, or only <to> with --from-start")
+    .option("--release <name>", 'name in the heading (default: <to> if it is a tag, else "Unreleased")')
+    .option("--from-start", "everything up to <to> (for the first release)")
+    .option("--stdout", "print the section and write nothing")
+    .option("--force", "rewrite the section if the release is already in the file")
+    .option("--all", "also list docs, refactor, test, build, ci, style, chore and revert commits")
+    .addHelpText(
+      "after",
+      `
+Reads <from>..<to> without merge commits. Sections: breaking changes ("!" or a "BREAKING CHANGE:" footer),
+features, fixes, performance and other (messages that do not follow the convention). The date is the one of
+the <to> commit. The rest of the file is not touched. Headings follow --lang.
+
+Exit code: 0 ok, 1 the release is already in the file, 2 bad input or shallow clone.
+
+Examples:
+  engkit --lang en changelog v1.1.0 HEAD --release v1.2.0
+  engkit changelog v1.1.0 v1.2.0 --stdout
+  engkit changelog v1.0.0 --from-start`
+    )
+    .action((refs: string[], opts: { release?: string; fromStart?: boolean; stdout?: boolean; force?: boolean; all?: boolean }) => {
+      process.exitCode = runChangelog(ctx.lang, refs, opts);
+    });
+
+  const env = program.command("env").description("Work with the variable names of .env files (values are never printed or written)");
+
+  env
+    .command("example")
+    .description("Create .env.example from the variable names of the .env files, or add the missing ones")
+    .addHelpText(
+      "after",
+      `
+Reads .env and .env.* in this folder (not *.example, *.sample, *.template, *.dist or backups).
+Writes only NAME= lines; values and comments are never copied. Existing lines are not touched.
+If a line cannot be read for certain, nothing is written and only the file and line number are shown.
+
+Exit code: 0 ok, 2 it could not be done.
+
+Example:
+  engkit env example`
+    )
+    .action(() => {
+      process.exitCode = runEnvExample();
+    });
+
+  env
+    .command("check")
+    .description("List the variables each .env file lacks compared with .env.example")
+    .argument("[files...]", "files to compare (default: every .env file in this folder)")
+    .option("--json", "print the result as JSON")
+    .addHelpText(
+      "after",
+      `
+Without .env.example each file is compared with all the variables of the compared files.
+Variables that are not in .env.example are reported as warnings. A variable with an empty value counts
+as present. Only names are shown.
+
+Exit code: 0 nothing missing, 1 missing variables, 2 a file could not be read or there is nothing to compare.
+
+Examples:
+  engkit env check
+  engkit env check .env.local .env.production --json`
+    )
+    .action((files: string[], opts: { json?: boolean }) => {
+      process.exitCode = runEnvCheck(files, opts);
     });
 
   const jira = program.command("jira").description("Jira defect tools");
