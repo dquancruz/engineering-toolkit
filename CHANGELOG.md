@@ -1,5 +1,11 @@
 # Changelog
 
+## [v0.8.0] - 2026-11-26
+
+### Features
+
+- **web:** add browser utilities for JSON, format conversion, regex and JWT (ca0cc29)
+
 ## [v0.7.0] - 2026-11-26
 
 ### Features
