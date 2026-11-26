@@ -10,7 +10,8 @@ test("makes no request after loading, whatever is typed", async ({ page, context
   // every request of the page and its workers from here on
   context.on("request", (r) => requests.push(r.url()));
   page.on("websocket", (s) => requests.push(s.url()));
-  await context.route("**/*", (route) => route.abort());
+  // cut the network; blob: is local memory (WebKit routes the worker's script through here too)
+  await context.route("**/*", (route) => (/^(blob|data):/.test(route.request().url()) ? route.continue() : route.abort()));
 
   await useEveryTool(page, CANARY);
   await page.waitForTimeout(500);
@@ -61,9 +62,10 @@ test("the policy blocks every way of connecting from the page", async ({ page })
 
   const results = await page.evaluate(async () => {
     const url = "https://blocked.invalid/x";
+    // a refusal may come as an error event, a rejection or, in WebKit, a thrown SecurityError
     const outcome = (start: () => Promise<unknown>) =>
       Promise.race([
-        start().then(
+        new Promise((resolve) => resolve(start())).then(
           () => "connected",
           () => "blocked"
         ),

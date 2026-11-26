@@ -45,17 +45,30 @@ for (const [lang, expected] of [
   ["en", /catastrophic backtracking.*nested or overlapping quantifiers/s],
   ["es", /backtracking catastrófico.*cuantificadores anidados/s],
 ] as const) {
-  test(`Regex: stops catastrophic backtracking and explains it (${lang})`, async ({ page }) => {
+  test(`Regex: explains catastrophic backtracking (${lang})`, async ({ page, browserName }) => {
     await open(page, `?lang=${lang}`, "#regex");
     await panel(page).getByRole("textbox", { name: /^(Pattern|Patrón)/ }).fill("^(a+)+$");
-    // long enough that no engine finishes it
+    // long enough that no engine can try every combination
     await panel(page).getByRole("textbox", { name: /^(Text|Texto)$/ }).fill(`${"a".repeat(60)}!`);
-    await expect(panel(page).getByRole("alert")).toContainText(expected, { timeout: 15_000 });
-    // the page keeps working, with a new worker
+    const alert = panel(page).getByRole("alert");
+    await expect(alert).toContainText(expected, { timeout: 15_000 });
+    // Chromium and Firefox keep going until the worker is stopped; WebKit gives up first and answers "no match"
+    if (browserName === "webkit") await expect(alert).toContainText(/may be missing|pueden faltar/);
+    else await expect(alert).toContainText(/was stopped|Se detuvo/);
+    // the page keeps working
     await panel(page).getByRole("textbox", { name: /^(Pattern|Patrón)/ }).fill("!");
     await expect(panel(page).getByRole("status")).toContainText("1 ");
+    await expect(alert).toBeEmpty();
   });
 }
+
+test("Regex: no slowness warning for an ordinary pattern", async ({ page }) => {
+  await open(page, "?lang=en", "#regex");
+  await panel(page).getByRole("textbox", { name: /^Pattern/ }).fill("\\d+");
+  await panel(page).getByRole("textbox", { name: "Text" }).fill("a1 b22 c333 ".repeat(200));
+  await expect(panel(page).getByRole("status")).toHaveText("600 match(es)");
+  await expect(panel(page).getByRole("alert")).toBeEmpty();
+});
 
 test("JWT: decodes and says the signature is not verified", async ({ page }) => {
   await open(page, "?lang=en", "#jwt");

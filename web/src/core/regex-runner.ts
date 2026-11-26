@@ -10,7 +10,12 @@ export interface RegexWorker {
   onerror: ((event: { message?: string }) => void) | null;
 }
 
-export type Outcome = Evaluation | { ok: false; timeout: true } | { ok: false; superseded: true };
+export type Outcome =
+  | Evaluation
+  | { ok: false; timeout: true }
+  | { ok: false; superseded: true }
+  /** The worker could not run at all (not a problem with the pattern). */
+  | { ok: false; failed: string };
 
 /**
  * Evaluates in a worker with a time limit. A worker that exceeds it, or is still busy when a newer request
@@ -37,7 +42,7 @@ export function createRunner(spawn: () => RegexWorker, timeoutMs = TIMEOUT_MS) {
         const timer = setTimeout(() => finish({ ok: false, timeout: true }, false), timeoutMs);
         cancel = () => finish({ ok: false, superseded: true }, false);
         worker.onmessage = (event) => finish(event.data, true);
-        worker.onerror = (event) => finish({ ok: false, error: event.message ?? "Worker error" }, false);
+        worker.onerror = (event) => finish({ ok: false, failed: event.message ?? "Worker error" }, false);
         worker.postMessage(request);
       });
     },

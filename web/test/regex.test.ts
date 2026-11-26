@@ -28,6 +28,12 @@ describe("evaluate", () => {
     expect(ok(evaluate({ pattern: "x*", flags: "gu", text: "🚀" })).matches.map((m) => m.start)).toEqual([0, 2]);
   });
 
+  it("measures how long it took", () => {
+    const now = vi.spyOn(performance, "now").mockReturnValueOnce(1000).mockReturnValueOnce(1250);
+    expect(ok(evaluate({ pattern: "a", flags: "", text: "a" })).elapsedMs).toBe(250);
+    now.mockRestore();
+  });
+
   it("limits the number of matches", () => {
     const r = ok(evaluate({ pattern: "a", flags: "g", text: "a".repeat(20) }, 5));
     expect(r).toMatchObject({ truncated: true });
@@ -71,7 +77,7 @@ describe("createRunner", () => {
       this.terminated = true;
     }
     reply() {
-      this.onmessage?.({ data: { ok: true, matches: [], truncated: false } });
+      this.onmessage?.({ data: { ok: true, matches: [], truncated: false, elapsedMs: 0 } });
     }
   }
   const setup = () => {
@@ -116,6 +122,6 @@ describe("createRunner", () => {
     const { spawned, runner } = setup();
     const run = runner.run(request);
     spawned[0]!.onerror?.({ message: "boom" });
-    expect(await run).toEqual({ ok: false, error: "boom" });
+    expect(await run).toEqual({ ok: false, failed: "boom" });
   });
 });

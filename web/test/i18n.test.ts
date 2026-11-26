@@ -31,6 +31,14 @@ describe("translations", () => {
   });
 });
 
+describe("the slow evaluation warning", () => {
+  it.each(LANGS)("explains it and says that results may be missing (%s)", (lang) => {
+    const text = translator(lang)("regex.slow");
+    expect(text).toMatch(/backtracking/i);
+    expect(text).toMatch(lang === "es" ? /pueden faltar resultados.*cuantificadores anidados/ : /results may be missing.*nested or overlapping quantifiers/);
+  });
+});
+
 describe("language choice", () => {
   it("?lang= wins, then the saved preference, then Spanish", () => {
     expect(DEFAULT_LANG).toBe("es");

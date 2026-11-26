@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "preact/hooks";
-import { segments, type Match } from "../core/regex.js";
+import { SLOW_MS, segments, type Match } from "../core/regex.js";
 import { TIMEOUT_MS, createRunner, type Outcome, type RegexWorker } from "../core/regex-runner.js";
 // Inlined so it runs from a blob: URL and inherits the page's Content-Security-Policy.
 import Worker from "../regex.worker.ts?worker&inline";
@@ -71,6 +71,17 @@ export function RegexTool() {
       </p>
       <div role="alert">
         {outcome && !outcome.ok && "timeout" in outcome && <p class="box error">{t("regex.timeout", { seconds: TIMEOUT_MS / 1000 })}</p>}
+        {outcome?.ok && outcome.elapsedMs >= SLOW_MS && <p class="box warning">{t("regex.slow")}</p>}
+        {outcome && !outcome.ok && "failed" in outcome && (
+          <div class="box error">
+            <p>
+              <strong>{t("regex.failed")}</strong>
+            </p>
+            <p class="detail" lang="en">
+              {outcome.failed}
+            </p>
+          </div>
+        )}
         {outcome && !outcome.ok && "error" in outcome && (
           <div class="box error">
             <p>

@@ -6,7 +6,7 @@ Four tools that run entirely in the browser, in Spanish and English. A static si
 |---|---|
 | JSON | Prettify, minify, validate (with line and column), TypeScript types and Zod 4 schemas from a sample. Numbers are never altered when formatting |
 | Converter | JSON, YAML, TOML, CSV and XML, in any direction. Everything that cannot be kept is listed as a warning |
-| Regex | JavaScript regular expressions: highlighted matches and groups. Runs in a worker that is stopped after 1.5 s |
+| Regex | JavaScript regular expressions: highlighted matches and groups. Runs in a worker that is stopped after 1.5 s; see [Regex in Safari](#regex-in-safari) |
 | JWT | Header, payload and `iat` / `nbf` / `exp`. **The signature is not verified** |
 
 Language: `?lang=es|en`, then the saved choice, then Spanish.
@@ -71,6 +71,10 @@ Automated checks do not cover everything. **Not verified with a screen reader.**
 - XML: attributes are `@_name` and text is `#text`. Values are text; document types (`DOCTYPE`) are rejected.
 - Comments, anchors and formatting are not kept between formats.
 - TOML needs a table at the root: lists go under `items`.
+
+## Regex in Safari
+
+Chromium and Firefox keep trying a catastrophic pattern until the worker is stopped, and the app explains why. **WebKit (Safari) gives up on its own after a fraction of a second and reports no match**, even losing matches that exist further on in the text, with no error. The engine offers no way to know that this happened, so the app warns about any evaluation slower than 100 ms that results may be missing. It is a heuristic: on a very fast machine the engine could give up below that threshold.
 
 ## Publishing
 

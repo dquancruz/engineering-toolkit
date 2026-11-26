@@ -19,9 +19,17 @@ export interface Match {
   groups: Group[];
 }
 
-export type Evaluation = { ok: true; matches: Match[]; truncated: boolean } | { ok: false; error: string };
+export type Evaluation =
+  | { ok: true; matches: Match[]; truncated: boolean; elapsedMs: number }
+  | { ok: false; error: string };
 
 export const MAX_MATCHES = 1000;
+/**
+ * An evaluation this slow is suspicious. WebKit (Safari) stops catastrophic backtracking on its own, in well
+ * under the worker's time limit, and then reports no match instead of an error: the result cannot be trusted
+ * and the engine gives no way to know. So a slow evaluation is flagged in every browser.
+ */
+export const SLOW_MS = 100;
 
 /** Runs a JavaScript regular expression. Call it from a worker: a bad pattern can take practically forever. */
 export function evaluate({ pattern, flags, text }: RegexRequest, limit = MAX_MATCHES): Evaluation {
@@ -33,6 +41,8 @@ export function evaluate({ pattern, flags, text }: RegexRequest, limit = MAX_MAT
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : String(e) };
   }
+  const started = performance.now();
+  const done = (matches: Match[], truncated: boolean): Evaluation => ({ ok: true, matches, truncated, elapsedMs: performance.now() - started });
   const matches: Match[] = [];
   const toMatch = (m: RegExpExecArray): Match => ({
     start: m.index,
@@ -46,13 +56,13 @@ export function evaluate({ pattern, flags, text }: RegexRequest, limit = MAX_MAT
 
   if (!re.global) {
     const m = re.exec(text);
-    return { ok: true, matches: m ? [toMatch(m)] : [], truncated: false };
+    return done(m ? [toMatch(m)] : [], false);
   }
   for (const m of text.matchAll(re)) {
-    if (matches.length === limit) return { ok: true, matches, truncated: true };
+    if (matches.length === limit) return done(matches, true);
     matches.push(toMatch(m));
   }
-  return { ok: true, matches, truncated: false };
+  return done(matches, false);
 }
 
 /** The name of each capturing group, in order (undefined for unnamed ones). */
