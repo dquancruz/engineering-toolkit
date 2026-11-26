@@ -1,10 +1,11 @@
+import { GenericChecklistError, checklistPromptItems } from "../checklists/generic.js";
 import type { Lang } from "../i18n/index.js";
 import { AnswersError, mergeAnswers, readAnswersFile } from "../prompt/answers.js";
 import { PromptCancelled, clackAsker, type Asker } from "../prompt/asker.js";
 import { buildPrompt, type BuiltPrompt } from "../prompt/build.js";
 import { ChecklistError, loadChecklist } from "../prompt/checklist.js";
 import { SecretsBlocked, runInteractive } from "../prompt/interactive.js";
-import type { PresetId, PromptAnswers } from "../prompt/model.js";
+import { addPromptItems, type PresetId, type PromptAnswers } from "../prompt/model.js";
 import { ProjectRefError, loadProjectInfo } from "../prompt/project.js";
 import { savePrompt } from "../prompt/save.js";
 
@@ -24,6 +25,8 @@ export interface PromptCommandOptions {
   done?: string;
   verify?: string[];
   response?: string;
+  /** `<id>` or `<id>:<variant>`: adds the prompt block of those checklists to limits and verification. */
+  checklist?: string[];
   /** `true` for `--save`, or the name given to `--save <name>`. */
   save?: string | boolean;
   /** Add the prompts folder to .gitignore (default true; `--no-gitignore` sets false). */
@@ -79,12 +82,15 @@ export async function runPrompt(lang: Lang, options: PromptCommandOptions, deps:
     const fromFile = options.from !== undefined ? readAnswersFile(options.from) : {};
     const nonInteractive = options.from !== undefined || hasFlagInput(flagAnswers);
 
+    // read first, so a wrong id fails before any question is asked
+    const extra = (options.checklist ?? []).map((spec) => checklistPromptItems(spec, lang));
+
     let answers: PromptAnswers;
     let built: BuiltPrompt;
     let interactive = false;
 
     if (nonInteractive) {
-      answers = mergeAnswers(fromFile, flagAnswers);
+      answers = addPromptItems(mergeAnswers(fromFile, flagAnswers), extra);
       built = buildPrompt(answers, { lang, cwd, envScan });
       answers = built.answers;
     } else {
@@ -97,7 +103,16 @@ export async function runPrompt(lang: Lang, options: PromptCommandOptions, deps:
         return EXIT_USAGE;
       }
       interactive = true;
-      const ctx = { lang, cwd, checklist: loadChecklist(lang), info: loadProjectInfo(cwd), envScan, allowSecrets };
+      const ctx = {
+        lang,
+        cwd,
+        checklist: loadChecklist(lang),
+        info: loadProjectInfo(cwd),
+        envScan,
+        allowSecrets,
+        extra,
+        requested: options.checklist ?? [],
+      };
       const result = await runInteractive(deps.asker ?? clackAsker(), ctx);
       answers = result.answers;
       built = buildPrompt(answers, { lang, cwd, envScan }, ctx.info);
@@ -147,7 +162,12 @@ export async function runPrompt(lang: Lang, options: PromptCommandOptions, deps:
       err("Blocked: the prompt still contains a possible secret. Nothing was printed or saved.\n");
       return EXIT_BLOCKED;
     }
-    if (e instanceof AnswersError || e instanceof ProjectRefError || e instanceof ChecklistError) {
+    if (
+      e instanceof AnswersError ||
+      e instanceof ProjectRefError ||
+      e instanceof ChecklistError ||
+      e instanceof GenericChecklistError
+    ) {
       err(`error: ${e.message}\n`);
       return EXIT_USAGE;
     }

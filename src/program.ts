@@ -216,6 +216,7 @@ Examples:
     .option("--done <text>", "how you will know it is finished (must be checkable)")
     .option("--verify <item>", "command or step that checks the result (repeatable)", collect, [])
     .option("--response <text>", "shape of the answer you want")
+    .option("--checklist <id>", "add the limits and verification of a checklist, <id> or <id>:<variant> (repeatable)", collect, [])
     .option("--save [name]", "save the prompt and its answers to the prompts folder (git-ignored by default)")
     .option("--no-gitignore", "do not add the prompts folder to .gitignore")
     .option("--allow-secrets", "print and save even if a possible secret was detected")
@@ -226,6 +227,10 @@ Examples:
       `
 Without --from or element flags it asks one question per element (needs a terminal).
 The prompt is printed to stdout; warnings, questions and messages go to stderr.
+
+Checklists: code-review (variants feature, bugfix, refactor, docs, dependencies), definition-of-done,
+system-design and threat-model. Their prompt items go after the preset's and before yours. The guided
+mode offers the one that fits the preset (default: no). --checklist alone keeps the guided mode.
 
 Project integration (needs .engkit.json): the guided mode offers accepted ADRs and open
 pending items as material, and CLAUDE.md as a limit. They are added as paths, never copied.
