@@ -21,6 +21,7 @@ One phase = one branch = one PR. Status is updated in the PR that finishes each 
 ## Decisions
 
 - `requirements` is an independent profile (new systems need it without legacy); `rebuild` adds it and `legacy`.
+- The sources register is shared by `legacy` and `requirements` (`sources.doc` in `.engkit.json`). `legacy.sources` from 0.6.0 is still read and `engkit init` moves it.
 - One file per slice. A rule excluded from the rebuild with a reason is not reported as unplanned. The test plan links the tests instead of copying them.
 - engkit never connects to a database: data counts are verified from a results file of numbers that the project's own script writes (`source + adjustments - excluded = target`).
 - A strangler plan lists each table once with a single writer; the plan is validated, the database is not.

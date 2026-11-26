@@ -347,14 +347,14 @@ Use it in CI:
 
 ### Legacy profile: `engkit init --profile legacy`
 
-For documenting a system that will be maintained or rebuilt: what it does (business rules), how that is checked (acceptance tests), what is wrong with it (defects) and where each fact comes from. Run it with the base documents (`engkit init --profile base,legacy`), which `check` needs. It adds a `legacy` section and `evidenceRoots` to `.engkit.json`, adds `.engkit.local.json` to `.gitignore` and never overwrites a file.
+For documenting a system that will be maintained or rebuilt: what it does (business rules), how that is checked (acceptance tests), what is wrong with it (defects) and where each fact comes from. Run it with the base documents (`engkit init --profile base,legacy`), which `check` needs. It adds a `legacy` section and `evidenceRoots` to `.engkit.json`, creates the [sources register](#sources-register) if no profile did it yet, adds `.engkit.local.json` to `.gitignore` and never overwrites a file.
 
 | es / en | ID | Content |
 |---|---|---|
 | `docs/reglas/` / `docs/rules/` | `RN-0001` | One business rule per file |
 | `docs/pruebas/` / `docs/acceptance/` | `PA-0001` | One acceptance test per file (given, when, then) |
 | `docs/defectos/` / `docs/defects/` | `D-0001` | One defect of the old system per file |
-| `docs/fuentes.md` / `sources.md` | `F-01` | Register of the sources |
+| `docs/fuentes.md` / `sources.md` | `F-01` | [Sources register](#sources-register), shared with `requirements` |
 | `docs/REGLAS.md` / `RULES.md` | | Generated rule index |
 
 Open questions stay in the pending file (`P-xx`). One file per item keeps diffs and history per rule and avoids merge conflicts when rules are added in parallel; a repeated ID is caught by `check`. Files are named `<ID>-description.md`.
@@ -371,18 +371,7 @@ engkit index && engkit check --strict
 
 #### Sources
 
-Each entry of the sources register says what it is and how it was obtained. All four fields are required:
-
-```markdown
-### F-02: Billing manager
-
-- type: person
-- obtained_by: Jane Doe
-- obtained_on: 2026-03-09
-- method: interview
-```
-
-`type` is `code`, `database`, `schema`, `data`, `document` or `person`. Stored procedures and other code kept in a database are `code`.
+Evidence that is not code, and the expected result of every test, cite entries of the [sources register](#sources-register).
 
 **Why a test cannot take its expected result from code.** Every PA names `expected_source`: one or more `F-xx` that are not of type `code`. An expected value copied from the code under test only confirms that the code does what it does, defects included, so it can never fail for the right reason. It has to come from somewhere that can disagree with the code: a person, a document, real data. `check` rejects a missing `expected_source`, an unknown ID, a source of type `code`, a code reference (`erp:path:10`) in the field and a source whose entry cites one. It cannot know whether a person or a document actually got the value from the code; that is for the reviewer.
 
@@ -463,9 +452,32 @@ A reference cannot leave its root (`..`, absolute paths and symlinks pointing ou
 
 `engkit index` also writes `docs/REGLAS.md` (`RULES.md`): ID, title, area, status, number of evidences, tests, defects, open questions and owner, ordered by area and ID, with totals per status. It says nothing about whether evidence is current, because that depends on each machine's roots. Resolve merge conflicts in it by regenerating it.
 
+### Sources register
+
+`docs/fuentes.md` (`sources.md`) says where each fact comes from. It is shared by the `legacy` and `requirements` profiles: the first one that needs it creates it, and an existing file is never touched. Its path is in a section of its own:
+
+```json
+{ "sources": { "doc": "docs/fuentes.md" } }
+```
+
+Each entry says what the source is and how it was obtained. All four fields are required:
+
+```markdown
+### F-02: Billing manager
+
+- type: person
+- obtained_by: Jane Doe
+- obtained_on: 2026-03-09
+- method: interview
+```
+
+`type` is `code`, `database`, `schema`, `data`, `document` or `person`. Stored procedures and other code kept in a database are `code`. `check` reports a missing or invalid field (`source-entry`), repeated IDs and references to entries that do not exist.
+
+**Projects created with 0.6.0** keep the path in `legacy.sources`. They keep working unchanged (both places are read; if both exist they must be equal). Running `engkit init` with any profile moves it to `sources.doc` and leaves the file alone. After that, engkit 0.6.0 no longer accepts the configuration, so upgrade everyone who uses the project.
+
 ### Requirements profile: `engkit init --profile requirements`
 
-Non-functional requirements and fixed constraints, for a new system or a rebuild. It adds a `requirements` section to `.engkit.json` and one document, `docs/requisitos.md` (`requirements.md`). It creates nothing of the legacy profile. Run it with the base documents (`--profile base,requirements`), which `check` needs.
+Non-functional requirements and fixed constraints, for a new system or a rebuild. It adds a `requirements` section to `.engkit.json`, the document `docs/requisitos.md` (`requirements.md`) and, if it does not exist yet, the [sources register](#sources-register). It creates nothing else of the legacy profile. Run it with the base documents (`--profile base,requirements`), which `check` needs.
 
 ```markdown
 ## Non-functional requirements
@@ -495,7 +507,7 @@ Non-functional requirements and fixed constraints, for a new system or a rebuild
 
 `category`: `users`, `sensitive-data`, `performance`, `availability`, `integrations`, `maintenance`. `status`: `draft`, `confirmed`, `not-applicable` (with `reason`). `kind`: `cloud`, `region`, `identity`, `database`, `other`. `verify` is a `PA-xxxx` or a command in backticks.
 
-**Sources.** `source` and `origin` take ADR IDs and `F-xx` IDs. The sources register belongs to the legacy profile, so in a project **without** `legacy` only ADRs can be cited (`check` says so for an `F-xx`).
+**Sources.** `source` and `origin` take ADR IDs and `F-xx` IDs of the [sources register](#sources-register), with the same types as in a legacy project (`code` too, though it is unusual in a new system).
 
 | Condition | `check` rule | Severity |
 |---|---|---|
