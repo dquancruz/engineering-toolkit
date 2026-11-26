@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { CONFIG_FILE, loadConfig, updateConfigFile } from "../config.js";
+import { CONFIG_FILE, loadConfig, migrateSourcesConfig, updateConfigFile } from "../config.js";
 import { resolveOwner, todayISO, type DocOptions } from "../docs/context.js";
 import { DEFAULT_PATHS, DOC_KEYS, TEMPLATE_DOCS, relativeLink, type DocPaths } from "../docs/files.js";
 import { yamlScalar } from "../docs/frontmatter.js";
@@ -146,6 +146,11 @@ export async function runInitProfiles(lang: Lang, options: InitProfilesOptions =
   const profiles = options.profiles ?? ["base"];
   let code = 0;
   if (options.extras?.length && !profiles.includes("rebuild")) throw new Error('--with only applies to "--profile rebuild".');
+  // projects created with 0.6.0 keep the sources register inside "legacy": move it to the shared section
+  const moved = migrateSourcesConfig(options.cwd ?? process.cwd(), options.dryRun === true);
+  if (moved !== null) {
+    console.log(`${options.dryRun ? "would " : ""}update  ${CONFIG_FILE}  (moved "legacy.sources" to "sources.doc": ${moved})`);
+  }
   if (profiles.includes("base")) runInit(lang, options);
   if (profiles.includes("legacy")) runInitLegacy(lang, options);
   if (profiles.includes("requirements")) runInitRequirements(lang, options);

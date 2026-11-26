@@ -3,8 +3,6 @@ import path from "node:path";
 import type { LegacyPaths } from "../config.js";
 import { extractTitle } from "../docs/adr.js";
 import { parseFrontmatter, type ParsedDoc } from "../docs/frontmatter.js";
-import type { PendingEntry } from "../docs/pending.js";
-import { parseRegister } from "../docs/register.js";
 import { DIR_KEY, ITEM_KINDS, itemFilePattern, type ItemKind } from "./model.js";
 
 export interface LegacyItem {
@@ -24,11 +22,10 @@ export interface Legacy {
   items: Record<ItemKind, LegacyItem[]>;
   /** Markdown files in the item folders whose name does not follow `<ID>-slug.md`. */
   unexpected: string[];
-  sources: { file: string; text: string; fm: ParsedDoc | null; entries: PendingEntry[] } | null;
 }
 
 export function loadLegacy(cwd: string, paths: LegacyPaths): Legacy {
-  const legacy: Legacy = { paths, items: { rule: [], test: [], defect: [] }, unexpected: [], sources: null };
+  const legacy: Legacy = { paths, items: { rule: [], test: [], defect: [] }, unexpected: [] };
 
   for (const kind of ITEM_KINDS) {
     const dir = paths[DIR_KEY[kind]];
@@ -50,11 +47,6 @@ export function loadLegacy(cwd: string, paths: LegacyPaths): Legacy {
     }
   }
 
-  const sources = path.join(cwd, paths.sources);
-  if (fs.existsSync(sources)) {
-    const text = fs.readFileSync(sources, "utf-8");
-    legacy.sources = { file: paths.sources, text, fm: parseFrontmatter(text), entries: parseRegister(text, "F") };
-  }
   return legacy;
 }
 

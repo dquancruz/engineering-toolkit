@@ -15,7 +15,7 @@ interface RefKind {
   pattern: RegExp;
   ids: (project: Project) => Set<string>;
   /** The profile that has to be configured for these references to count. */
-  profile?: "legacy" | "requirements" | "rebuild";
+  profile?: "legacy" | "sources" | "requirements" | "rebuild";
 }
 
 const registerKind = (name: "RNF" | "RES", profile: "requirements"): RefKind => ({
@@ -58,7 +58,7 @@ const REF_KINDS: RefKind[] = [
   legacyKind("RN", "rule"),
   legacyKind("PA", "test"),
   legacyKind("D", "defect"),
-  { name: "F", pattern: /\bF-\d{2,}\b/g, ids: (p) => new Set(p.legacy?.sources?.entries.map((e) => e.id)), profile: "legacy" },
+  { name: "F", pattern: /\bF-\d{2,}\b/g, ids: (p) => new Set(p.sources?.entries.map((e) => e.id)), profile: "sources" },
   registerKind("RNF", "requirements"),
   registerKind("RES", "requirements"),
   { name: "K", pattern: /\bK-\d{2,}\b/g, ids: (p) => new Set(p.rebuild?.risks.map((r) => r.id)), profile: "rebuild" },
@@ -69,6 +69,7 @@ const REF_KINDS: RefKind[] = [
 export function checkReferences(project: Project, report: Report): void {
   const active = {
     legacy: project.legacy !== null,
+    sources: project.sources !== null,
     requirements: project.docs.some((d) => d.key === "requirements"),
     rebuild: project.rebuild !== null,
   };

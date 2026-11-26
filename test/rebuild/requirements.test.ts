@@ -5,6 +5,7 @@ import { runRequirements, type RequirementsOptions } from "../../src/commands/re
 import { addEntries, parseEntriesFile } from "../../src/requirements/entries.js";
 import { PromptCancelled } from "../../src/prompt/asker.js";
 import { FakeAsker } from "../prompt/helpers.js";
+import { source } from "../legacy/helpers.js";
 import { ALL_CATEGORIES, TODAY, check, cleanup, entry, init, initLog, raw, read, requirement, requirements, write } from "./helpers.js";
 
 afterEach(cleanup);
@@ -40,7 +41,7 @@ describe("the requirements profile on its own", () => {
     expect(config).not.toHaveProperty("legacy");
     expect(config).not.toHaveProperty("evidenceRoots");
     expect(config).not.toHaveProperty("rebuild");
-    for (const name of ["fuentes.md", "reglas", "pruebas", "defectos", "REGLAS.md", "reconstruccion"]) {
+    for (const name of ["reglas", "pruebas", "defectos", "REGLAS.md", "reconstruccion"]) {
       expect(fs.existsSync(path.join(dir, "docs", name)), name).toBe(false);
     }
     expect(fs.existsSync(path.join(dir, ".gitignore"))).toBe(false);
@@ -56,10 +57,43 @@ describe("the requirements profile on its own", () => {
     expect(findings(await covered())).toMatchObject({ errors: [], warnings: [] });
   });
 
-  it("explains that F- sources need the legacy register", async () => {
-    const r = await one(constraint({ origin: "F-01" }));
+  it("creates the sources register and records its path in the shared section", async () => {
+    const dir = await project();
+    expect(JSON.parse(read(dir, ".engkit.json")).sources).toEqual({ doc: "docs/fuentes.md" });
+    expect(read(dir, "docs/fuentes.md")).toContain("## Entradas");
+  });
+
+  it("never touches a register that already exists", async () => {
+    const dir = await init(["base"]);
+    write(dir, "docs/fuentes.md", "my own file\n");
+    await init(["requirements"], { cwd: dir });
+    expect(read(dir, "docs/fuentes.md")).toBe("my own file\n");
+    expect(initLog).toContain("skipped  docs/fuentes.md");
+  });
+
+  it.each(["person", "document", "code"])("accepts a %s source as the origin of a constraint or requirement", async (type) => {
+    const dir = await covered();
+    requirements(dir, source("F-01", type), "docs/fuentes.md");
+    requirements(dir, constraint({ origin: "F-01, ADR-0001" }) + requirement("RNF-07", "users", { source: "F-01" }));
+    expect(findings(dir)).toMatchObject({ errors: [], warnings: [] });
+  });
+
+  it("reports an F- source that does not exist, once, and validates the entries", async () => {
+    expect((await one(constraint({ origin: "F-09" }))).errors).toEqual(["broken-ref requisitos.md"]);
+    const dir = await covered();
+    requirements(dir, source("F-01", "rumour"), "docs/fuentes.md");
+    expect(findings(dir).errors).toEqual(["source-entry fuentes.md"]);
+  });
+
+  it("explains an F- source in a project without a register", async () => {
+    const dir = await covered();
+    const config = JSON.parse(read(dir, ".engkit.json"));
+    delete config.sources;
+    write(dir, ".engkit.json", JSON.stringify(config));
+    requirements(dir, constraint({ origin: "F-01" }));
+    const r = findings(dir);
     expect(r.errors).toEqual(["broken-ref requisitos.md"]);
-    expect(r.messages).toContain("use an ADR");
+    expect(r.messages).toContain("no sources register");
   });
 
   it("keeps the existing document when init runs again", async () => {

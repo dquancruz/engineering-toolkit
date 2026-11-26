@@ -53,7 +53,7 @@ export function checkRequirements(project: Project, report: Report): void {
       if (/^ADR-\d{4}$/.test(id)) {
         if (adrs.has(id) && adrs.get(id) !== "accepted") add("origin-adr", "warning", key, `${key}: ${id} is "${adrs.get(id) ?? "?"}", not accepted.`);
       } else if (/^F-\d{2,}$/.test(id)) {
-        if (!sources) add("broken-ref", "error", key, `${key}: ${id} needs the sources register of the legacy profile; this project has none, so use an ADR.`);
+        if (!sources) add("broken-ref", "error", key, `${key}: ${id} cannot be resolved: the project has no sources register. Run "engkit init --profile requirements".`);
       } else {
         add("broken-ref", "error", key, `${key}: "${id}" is not an F-xx or ADR-xxxx ID.`);
       }

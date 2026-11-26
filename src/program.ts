@@ -73,8 +73,8 @@ Profiles:
          (default: main, master; patterns like release/* work).
   legacy additive: the sources register (F-xx), folders for business rules (RN), acceptance tests (PA) and
          defects (D), and the rule index. "engkit check" then verifies their links and the code evidence.
-  requirements  additive: the document of non-functional requirements (RNF) and fixed constraints (RES).
-         Works without legacy, for new systems.
+  requirements  additive: the document of non-functional requirements (RNF) and fixed constraints (RES),
+         and the sources register (F-xx) it shares with legacy. Works without legacy, for new systems.
   rebuild  requirements + legacy (added when missing) + the rebuild plan, its vertical slices and the test
          plan. --with strangler adds the single-writer plan; --with data the data migration plan.
 

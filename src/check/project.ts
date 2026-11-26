@@ -6,6 +6,7 @@ import type { DocKey, DocPaths } from "../docs/files.js";
 import { DOC_KEYS } from "../docs/files.js";
 import { loadLegacy, type Legacy } from "../legacy/load.js";
 import { loadRebuild, type Rebuild } from "../rebuild/load.js";
+import { loadSources, type SourcesRegister } from "../sources/register.js";
 
 export class CheckSetupError extends Error {}
 
@@ -27,7 +28,7 @@ export interface AdrDoc extends Doc {
 export interface Project {
   cwd: string;
   paths: DocPaths;
-  /** Existing documents among: claude, agents, glossary, pending, design, log (and the legacy sources register). */
+  /** Existing documents among: claude, agents, glossary, pending, design, log (and those of the optional profiles). */
   docs: Doc[];
   /** ADRs with number >= 1, sorted by number. */
   adrs: AdrDoc[];
@@ -37,6 +38,8 @@ export interface Project {
   missing: string[];
   /** The legacy profile, when `.engkit.json` has a "legacy" section. */
   legacy: Legacy | null;
+  /** The sources register shared by the legacy and requirements profiles, when configured and present. */
+  sources: SourcesRegister | null;
   /** The rebuild profile, when `.engkit.json` has a "rebuild" section. */
   rebuild: Rebuild | null;
 }
@@ -94,10 +97,10 @@ export function loadProject(cwd: string): Project {
   else if (!hasAdrTemplate) missing.push(paths.adrTemplate);
 
   const legacy = config.legacy ? loadLegacy(cwd, config.legacy) : null;
-  if (legacy && !legacy.sources) missing.push(legacy.paths.sources);
-
+  const sources = config.sources ? loadSources(cwd, config.sources.doc) : null;
+  if (config.sources && !sources) missing.push(config.sources.doc);
   // the sources register is a status document: it gets the same owner and date rules
-  if (legacy?.sources) docs.push({ key: "sources", file: legacy.sources.file, text: legacy.sources.text, fm: legacy.sources.fm });
+  if (sources) docs.push({ key: "sources", file: sources.file, text: sources.text, fm: sources.fm });
 
   const rebuild = config.rebuild ? loadRebuild(cwd, config.rebuild) : null;
   // the requirements, the rebuild plan and the strangler plan are status documents too
@@ -113,7 +116,7 @@ export function loadProject(cwd: string): Project {
     else docs.push({ key, file, text, fm: parseFrontmatter(text) });
   }
 
-  return { cwd, paths, docs, adrs, hasAdrTemplate, missing, legacy, rebuild };
+  return { cwd, paths, docs, adrs, hasAdrTemplate, missing, legacy, sources, rebuild };
 }
 
 export const str = (v: unknown): string | null => {

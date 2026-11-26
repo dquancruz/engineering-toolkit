@@ -19,6 +19,11 @@ export interface EngkitConfig {
   legacy?: LegacyPaths;
   /** Where the code cited as evidence lives, by name. `self` (the project) is always defined. */
   evidenceRoots?: Record<string, EvidenceRootConfig>;
+  /**
+   * The sources register (F-xx), shared by the legacy and requirements profiles. Projects created with 0.6.0
+   * have it as `legacy.sources`; both places are read.
+   */
+  sources?: { doc: string };
   /** The requirements profile: non-functional requirements and fixed constraints. */
   requirements?: { doc: string };
   /** The rebuild profile; it needs "requirements" and "legacy". */
@@ -35,7 +40,7 @@ export interface RebuildPaths {
   dataDir?: string;
 }
 
-export const LEGACY_KEYS = ["rulesDir", "testsDir", "defectsDir", "sources", "rulesIndex"] as const;
+export const LEGACY_KEYS = ["rulesDir", "testsDir", "defectsDir", "rulesIndex"] as const;
 export type LegacyPaths = Record<(typeof LEGACY_KEYS)[number], string>;
 
 export interface EvidenceRootConfig {
@@ -169,6 +174,36 @@ function validateRebuild(value: unknown): RebuildPaths {
   };
 }
 
+/** The path of the sources register from `sources.doc` (shared) or `legacy.sources` (0.6.0). */
+function readSources(data: Record<string, unknown>): string | null {
+  const shared = data["sources"];
+  if (shared !== undefined && !isObject(shared)) throw new Error(`Invalid ${CONFIG_FILE}: "sources" must be an object with "doc"`);
+  const current = shared === undefined ? null : validatePath("doc", (shared as Record<string, unknown>)["doc"], "sources.");
+  const old = isObject(data["legacy"]) ? data["legacy"]["sources"] : undefined;
+  const previous = old === undefined ? null : validatePath("sources", old, "legacy.");
+  if (current !== null && previous !== null && current !== previous) {
+    throw new Error(`Invalid ${CONFIG_FILE}: "sources.doc" (${current}) and "legacy.sources" (${previous}) differ; keep "sources.doc"`);
+  }
+  return current ?? previous;
+}
+
+/**
+ * Moves `legacy.sources` (0.6.0) to the shared `sources` section. Returns the path moved, or null when there
+ * is nothing to move. With `dryRun` nothing is written.
+ */
+export function migrateSourcesConfig(cwd: string, dryRun = false): string | null {
+  const legacy = readRaw(cwd)["legacy"];
+  if (!isObject(legacy) || legacy["sources"] === undefined) return null;
+  const doc = loadConfig(cwd).sources!.doc; // validates, and fails if the two places differ
+  if (!dryRun) {
+    updateConfigFile(cwd, (raw) => {
+      const { sources: _old, ...rest } = raw["legacy"] as Record<string, unknown>;
+      return { ...raw, sources: { ...(raw["sources"] as object | undefined), doc }, legacy: rest };
+    });
+  }
+  return doc;
+}
+
 function validateRoots(value: unknown, file: string): Record<string, EvidenceRootConfig> {
   const fail = (message: string): never => {
     throw new Error(`Invalid ${file}: ${message}`);
@@ -246,6 +281,11 @@ export function loadConfig(cwd: string = process.cwd()): EngkitConfig {
 
   if (data["branch"] !== undefined) config.branch = validateBranch(data["branch"]);
   if (data["legacy"] !== undefined) config.legacy = validateLegacy(data["legacy"]);
+  const sources = readSources(data);
+  if (sources !== null) config.sources = { doc: sources };
+  if (config.legacy && !config.sources) {
+    throw new Error(`Invalid ${CONFIG_FILE}: "legacy" needs the sources register: add "sources": { "doc": "..." } to the file`);
+  }
   if (data["evidenceRoots"] !== undefined) config.evidenceRoots = validateRoots(data["evidenceRoots"], CONFIG_FILE);
   if (data["requirements"] !== undefined) config.requirements = validateRequirements(data["requirements"]);
   if (data["rebuild"] !== undefined) {

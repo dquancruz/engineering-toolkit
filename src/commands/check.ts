@@ -8,6 +8,7 @@ import { checkDataPlan } from "../check/rules/data.js";
 import { checkRebuildPlan, checkTestPlanStale } from "../check/rules/rebuild.js";
 import { checkRequirements } from "../check/rules/requirements.js";
 import { checkStrangler } from "../check/rules/strangler.js";
+import { checkSources } from "../check/rules/sources.js";
 import { todayISO } from "../docs/context.js";
 import { checkFrontmatter, checkStatusDates, checkTodoFields } from "../check/rules/documents.js";
 import { checkAdrDeleted, checkAdrImmutable, checkLogAppendOnly, gitLimitation } from "../check/rules/history.js";
@@ -74,6 +75,7 @@ export function runCheck(lang: Lang, options: CheckOptions = {}): CheckResult {
     unverified = checkEvidence(project.legacy, new EvidenceReader(cwd, roots), report);
   }
 
+  checkSources(project, report);
   checkRequirements(project, report);
   if (project.rebuild) {
     checkRebuildPlan(project, report);

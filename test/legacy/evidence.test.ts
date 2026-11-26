@@ -271,7 +271,7 @@ describe("configuration and init", () => {
     [{ evidenceRoots: { c: { path: "x" } } }, /at least 2/],
     [{ evidenceRoots: { erp: {} } }, /path/],
     [{ legacy: { rulesDir: "docs/r" } }, /legacy.testsDir/],
-    [{ legacy: { rulesDir: "../r", testsDir: "t", defectsDir: "d", sources: "s.md", rulesIndex: "i.md" } }, /inside the project/],
+    [{ legacy: { rulesDir: "../r", testsDir: "t", defectsDir: "d", rulesIndex: "i.md" } }, /inside the project/],
   ])("rejects %j", (patch, message) => {
     write(f.dir, ".engkit.json", JSON.stringify({ ...JSON.parse(read(f.dir, ".engkit.json")), ...patch }));
     expect(() => check(f.dir)).toThrow(message);

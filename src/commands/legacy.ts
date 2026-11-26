@@ -14,10 +14,11 @@ import { EvidenceReader, EvidenceRefError, formatRef, hashLines, isWeak, parseRe
 import { evidenceOf, loadLegacy, type Legacy, type LegacyItem } from "../legacy/load.js";
 import { DIR_KEY, ITEM_KINDS, formatItemId, itemFilePattern, type ItemKind } from "../legacy/model.js";
 import { generateRulesIndex } from "../legacy/rules-index.js";
+import { ensureSources, loadSources } from "../sources/register.js";
 
 export const DEFAULT_LEGACY_PATHS: Record<Lang, LegacyPaths> = {
-  es: { rulesDir: "docs/reglas", testsDir: "docs/pruebas", defectsDir: "docs/defectos", sources: "docs/fuentes.md", rulesIndex: "docs/REGLAS.md" },
-  en: { rulesDir: "docs/rules", testsDir: "docs/acceptance", defectsDir: "docs/defects", sources: "docs/sources.md", rulesIndex: "docs/RULES.md" },
+  es: { rulesDir: "docs/reglas", testsDir: "docs/pruebas", defectsDir: "docs/defectos", rulesIndex: "docs/REGLAS.md" },
+  en: { rulesDir: "docs/rules", testsDir: "docs/acceptance", defectsDir: "docs/defects", rulesIndex: "docs/RULES.md" },
 };
 
 const TEMPLATE: Record<ItemKind, string> = { rule: "rn.md", test: "pa.md", defect: "defect.md" };
@@ -60,8 +61,8 @@ export function runInitLegacy(lang: Lang, options: DocOptions & Output & { dryRu
   const cwd = options.cwd ?? process.cwd();
   const { out } = streams(options);
   const dryRun = options.dryRun === true;
-  const date = options.today ?? todayISO();
-  const owner = resolveOwner(options.owner, cwd);
+  // first, because a "legacy" section is only valid with a register
+  ensureSources(lang, { ...options, out });
   const config = loadConfig(cwd);
   const paths = config.legacy ?? DEFAULT_LEGACY_PATHS[config.lang ?? lang];
   const would = dryRun ? "would " : "";
@@ -74,16 +75,6 @@ export function runInitLegacy(lang: Lang, options: DocOptions & Output & { dryRu
   }
 
   for (const kind of ITEM_KINDS) if (!dryRun) fs.mkdirSync(path.join(cwd, paths[DIR_KEY[kind]]), { recursive: true });
-
-  const sources = path.join(cwd, paths.sources);
-  if (fs.existsSync(sources)) out(`skipped  ${paths.sources} (already exists)`);
-  else {
-    if (!dryRun) {
-      fs.mkdirSync(path.dirname(sources), { recursive: true });
-      fs.writeFileSync(sources, render(readTemplate(config.lang ?? lang, "sources.md"), { date, owner_yaml: yamlScalar(owner) }), "utf-8");
-    }
-    out(`${dryRun ? "would create" : "created"}  ${paths.sources}`);
-  }
 
   if (fs.existsSync(path.join(cwd, paths.rulesIndex))) out(`skipped  ${paths.rulesIndex} (already exists)`);
   else if (dryRun) out(`would create  ${paths.rulesIndex}`);
@@ -129,8 +120,9 @@ export function runNewItem(kind: ItemKind, title: string, lang: Lang, options: N
   const rules = check(options.rule, new Set(legacy.items.rule.map((i) => i.id)), "Rule");
   const defects = check(options.defect, new Set(legacy.items.defect.map((i) => i.id)), "Defect");
   const questions = check(options.question, options.question?.length ? questionsOf(cwd) : new Set(), "Question");
-  const expected = check(options.source, new Set(legacy.sources?.entries.map((e) => e.id)), "Source");
-  const code = (options.source ?? []).find((s) => legacy.sources?.entries.find((e) => e.id === s)?.fields["type"]?.value === "code");
+  const register = loadSources(cwd, loadConfig(cwd).sources!.doc)?.entries ?? [];
+  const expected = check(options.source, new Set(register.map((e) => e.id)), "Source");
+  const code = (options.source ?? []).find((s) => register.find((e) => e.id === s)?.fields["type"]?.value === "code");
   if (code) throw new Error(`${code} is of type "code": the expected result of a test cannot come from code.`);
 
   const dir = legacy.paths[DIR_KEY[kind]];

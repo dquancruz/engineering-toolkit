@@ -14,6 +14,7 @@ import { loadRebuild } from "../rebuild/load.js";
 import { SLICE_FILE, formatSliceId } from "../rebuild/model.js";
 import { TestPlanError, buildTestPlan, generateTestPlan } from "../rebuild/testplan.js";
 import { loadLegacy } from "../legacy/load.js";
+import { DEFAULT_SOURCES_DOC, ensureSources } from "../sources/register.js";
 import { DEFAULT_LEGACY_PATHS, runInitLegacy, type Output } from "./legacy.js";
 
 export const REBUILD_EXTRAS = ["strangler", "data"] as const;
@@ -53,7 +54,7 @@ function create(cwd: string, file: string, content: () => string, dryRun: boolea
   out(`${dryRun ? "would create" : "created"}  ${file}`);
 }
 
-/** `engkit init --profile requirements`: only the requirements document; nothing of the legacy profile. */
+/** `engkit init --profile requirements`: the requirements document and the shared sources register. */
 export function runInitRequirements(lang: Lang, options: InitOptions = {}): void {
   const cwd = options.cwd ?? process.cwd();
   const { out } = streams(options);
@@ -67,6 +68,7 @@ export function runInitRequirements(lang: Lang, options: InitOptions = {}): void
   }
   const vars = { date: options.today ?? todayISO(), owner_yaml: yamlScalar(resolveOwner(options.owner, cwd)) };
   create(cwd, doc, () => render(readTemplate(stored, "requirements.md"), vars), dryRun, out);
+  ensureSources(lang, { ...options, out });
   if (!config.paths && !dryRun) out('note: "engkit check" also needs the base documents: run "engkit init".');
 }
 
@@ -82,7 +84,7 @@ export function runInitRebuild(lang: Lang, options: InitOptions & { extras?: Reb
   const stored = before.lang ?? lang;
 
   if (!options.legacyDone) {
-    if (!before.legacy) out('note: the rebuild profile needs "legacy" (rules, tests and sources): adding it.');
+    if (!before.legacy) out('note: the rebuild profile needs "legacy" (rules, tests and defects): adding it.');
     if (!before.legacy) runInitLegacy(lang, options);
   }
   if (!options.requirementsDone) {
@@ -117,7 +119,7 @@ export function runInitRebuild(lang: Lang, options: InitOptions & { extras?: Reb
       render(readTemplate(stored, "plan.md"), {
         ...vars,
         requirements_link: link(requirements),
-        sources_link: link(legacy.sources),
+        sources_link: link(config.sources?.doc ?? DEFAULT_SOURCES_DOC[stored]),
         rules_link: link(legacy.rulesIndex),
         decisions_link: link(docs.decisions),
         pending_link: link(docs.pending),

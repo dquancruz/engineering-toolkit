@@ -281,6 +281,7 @@ describe("without the legacy profile", () => {
   it("ignores RN, PA, D and F in an existing project", () => {
     const config = JSON.parse(read(f.dir, ".engkit.json"));
     delete config.legacy;
+    delete config.sources;
     write(f.dir, ".engkit.json", JSON.stringify(config));
     fs.appendFileSync(path.join(f.dir, "CLAUDE.md"), "\nRN-0001 PA-0001 D-0001 F-16\n");
     const r = check(f.dir);
