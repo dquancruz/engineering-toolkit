@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import { parseCommit } from "../../src/changelog/commits.js";
 import { insertSection } from "../../src/changelog/file.js";
@@ -133,7 +134,7 @@ describe("engkit changelog", () => {
     const source = history();
     const dir = tmpDir();
     dirs.push(dir);
-    git(source, ["clone", "-q", "--depth", "1", `file://${source}`, dir]);
+    git(source, ["clone", "-q", "--depth", "1", pathToFileURL(source).href, dir]);
     const r = run(dir, ["HEAD", "HEAD"]);
     expect(r.code).toBe(2);
     expect(r.err).toContain("shallow");

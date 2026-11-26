@@ -23,9 +23,9 @@ jobs:
       - run: npm test
       - run: npm audit --audit-level=moderate
 
-  # The agent guards run on the developer's machine, so they are tested on Windows and macOS too.
-  # The rest of the suite still assumes Linux (see ROADMAP, "Future ideas").
-  agent-portability:
+  # The agent guards and the git and .env commands run on the developer's machine, so they are tested
+  # on Windows and macOS too. The rest of the suite still assumes Linux (see ROADMAP, "Future ideas").
+  portability:
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -38,4 +38,4 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
-      - run: npx vitest run test/agent
+      - run: npx vitest run test/agent test/branch test/changelog test/env

@@ -10,8 +10,8 @@ One phase = one branch = one PR. Status is updated in the PR that finishes each 
 | 1 | **Base documents**: `engkit init`, `engkit new adr\|pendiente`, `engkit index` (ADR, BITACORA, CLAUDE.md/AGENTS.md, glossary, pending items, current design) | Done |
 | 2 | **Verifier**: `engkit check` (ADR immutability, dates, unique IDs, references, append-only log, owners, TODO fields, deleted ADRs), `engkit adr accept`, `engkit new adr --supersedes` | Done |
 | 3 | **Prompt builder**: `engkit prompt` (guided and non-interactive, task presets, warnings, project links, secret detection, `checklists/{es,en}/ai-prompt.md` as source) | Done |
-| 4 | **Agent profile**: `engkit init --profile agent` (reviewer and builder subagents, Claude Code permissions and a Node guard hook, settings merge with diff), `engkit agent test-guards`, `protectedBranches` | In review |
-| 5 | **Git workflow and checklists**: `engkit branch`, `engkit changelog`, `engkit env`; code review, DoD, system design and threat model checklists | Planned |
+| 4 | **Agent profile**: `engkit init --profile agent` (reviewer and builder subagents, Claude Code permissions and a Node guard hook, settings merge with diff), `engkit agent test-guards`, `protectedBranches` | Done |
+| 5 | **Git workflow and checklists**: `engkit branch`, `engkit changelog`, `engkit env`; code review, DoD, system design and threat model checklists, `engkit prompt --checklist`, `ask` rules for git commands that discard work, `CHANGELOG.md` | In review |
 | 6 | **Legacy profile**: business rules, defects, evidence sources, acceptance tests; extra `check` rules | Planned |
 | 7 | **Rebuild profile**: non-functional requirements, rebuild plan, `engkit requirements`, `engkit testplan` | Planned |
 | 8 | **Utilities web app** (`web/`): JSON formatter, type converter, regex tester, JWT decoder (static site) | Planned |
@@ -19,6 +19,11 @@ One phase = one branch = one PR. Status is updated in the PR that finishes each 
 | 10 | **The rest**: `engkit mock`, `engkit scaffold` | Planned |
 
 ## Decisions
+
+- Git commands that discard work (`git clean`, `reset --hard`, `checkout .`, `restore .`, `stash drop|clear`) are `ask`, not `deny`: they are legitimate but unrecoverable, so a person decides. Both `permissions.ask` and the guard (`permissionDecision: "ask"`) cover them, because rules do not match forms such as `git -C dir reset --hard`.
+- Every phase ends with a `chore(release)` commit, in the same PR, that bumps the version and adds its `CHANGELOG.md` section with `engkit changelog`. The release workflow builds the notes with the same command. PRs are merged with merge commits.
+- `engkit env` reads and writes variable names only and fails closed on anything it cannot parse for certain.
+- `engkit prompt` adds checklist items only on request (`--checklist`, or accepting the offer in guided mode), and only the short prompt block of each checklist.
 
 - The agent guards are one dependency-free Node script (`.claude/hooks/engkit-guard.mjs`) registered in exec form with `"onFailure": "block"`, so one entry works on Linux, macOS and Windows and fails closed. Deny rules in `permissions.deny` back it up for exact cases; `.env*` patterns and branch checks live only in the hook. Protected branches are `protectedBranches` in `.engkit.json` (default `main`, `master`; `*` wildcard). `engkit init` merges into an existing `.claude/settings.json` showing a diff first and never edits `CLAUDE.md` or `AGENTS.md`.
 
