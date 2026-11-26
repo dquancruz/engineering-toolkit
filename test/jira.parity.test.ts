@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { runJiraOncall } from "../src/commands/jira-oncall.js";
 import { runJiraReport } from "../src/commands/jira-report.js";
 import { captureConsole, fixtures, normalize, tmpDir } from "./helpers.js";
@@ -14,6 +14,9 @@ let previousCwd: string;
 let previousBaseUrl: string | undefined;
 
 beforeEach(() => {
+  // The oncall ticket prints today's date, so the clock is pinned to the day the goldens were made.
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(new Date("2026-11-24T12:00:00Z"));
   previousCwd = process.cwd();
   previousBaseUrl = process.env["JIRA_BASE_URL"];
   process.env["JIRA_BASE_URL"] = "https://your-company.atlassian.net";
@@ -23,6 +26,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.useRealTimers();
   process.chdir(previousCwd);
   if (previousBaseUrl === undefined) delete process.env["JIRA_BASE_URL"];
   else process.env["JIRA_BASE_URL"] = previousBaseUrl;
