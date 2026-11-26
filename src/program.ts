@@ -8,6 +8,7 @@ import { runIndex } from "./commands/index-cmd.js";
 import { AGENT_CHOICES, PROFILES, parseProfiles, runInitProfiles, type Profile } from "./commands/init.js";
 import { runAgentTestGuards } from "./commands/agent.js";
 import { runBranch } from "./commands/branch.js";
+import { runChangelog } from "./commands/changelog.js";
 import type { AgentChoice } from "./agent/install.js";
 import { runJiraOncall } from "./commands/jira-oncall.js";
 import { runJiraReport } from "./commands/jira-report.js";
@@ -283,6 +284,33 @@ Examples:
     )
     .action((words: string[], opts: { type?: string; ticket?: string; from?: string; dryRun?: boolean }) => {
       process.exitCode = runBranch(words, opts);
+    });
+
+  program
+    .command("changelog")
+    .description("Add the Conventional Commits between two refs to CHANGELOG.md")
+    .argument("<refs...>", "<from> <to>, or only <to> with --from-start")
+    .option("--release <name>", 'name in the heading (default: <to> if it is a tag, else "Unreleased")')
+    .option("--from-start", "everything up to <to> (for the first release)")
+    .option("--stdout", "print the section and write nothing")
+    .option("--force", "rewrite the section if the release is already in the file")
+    .option("--all", "also list docs, refactor, test, build, ci, style, chore and revert commits")
+    .addHelpText(
+      "after",
+      `
+Reads <from>..<to> without merge commits. Sections: breaking changes ("!" or a "BREAKING CHANGE:" footer),
+features, fixes, performance and other (messages that do not follow the convention). The date is the one of
+the <to> commit. The rest of the file is not touched. Headings follow --lang.
+
+Exit code: 0 ok, 1 the release is already in the file, 2 bad input or shallow clone.
+
+Examples:
+  engkit --lang en changelog v1.1.0 HEAD --release v1.2.0
+  engkit changelog v1.1.0 v1.2.0 --stdout
+  engkit changelog v1.0.0 --from-start`
+    )
+    .action((refs: string[], opts: { release?: string; fromStart?: boolean; stdout?: boolean; force?: boolean; all?: boolean }) => {
+      process.exitCode = runChangelog(ctx.lang, refs, opts);
     });
 
   const jira = program.command("jira").description("Jira defect tools");
