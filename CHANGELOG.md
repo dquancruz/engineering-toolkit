@@ -5,6 +5,7 @@
 ### Features
 
 - add the requirements and rebuild profiles with engkit requirements and testplan (7dcc4c7)
+- share the sources register between the legacy and requirements profiles (496cb6f)
 
 ## [v0.6.0] - 2026-11-26
 
