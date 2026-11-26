@@ -1,6 +1,6 @@
 # 🧰 Engineering Toolkit
 
-A knowledge base, a CLI (`engkit`) and a collection of checklists for software engineering work.
+A knowledge base, a CLI (`engkit`), a set of browser utilities and a collection of checklists for software engineering work.
 
 This repository is my **second brain**: notes I reference regularly, a TypeScript CLI that automates repetitive tasks, and checklists that keep quality consistent.
 
@@ -37,6 +37,7 @@ engineering-toolkit/
 │   ├── requirements/           RNF and RES entries and the guided collector
 │   ├── rebuild/                slices, strangler and data plans, test plan
 │   └── commands/               one module per command
+├── web/                        developer utilities in the browser (separate package, see web/README.md)
 ├── templates/                  es/en document templates; agent/guard.mjs is the Claude Code guard hook
 ├── test/                       vitest tests and fixtures
 ├── knowledge/                  Reference notes
@@ -59,11 +60,11 @@ The CLI is not published to npm. `dist/` is not versioned, so releases ship a pr
 **Main method: install the tarball from a GitHub Release**
 
 ```bash
-npm i -g https://github.com/dquancruz/engineering-toolkit/releases/download/v0.7.0/engineering-toolkit-0.7.0.tgz
+npm i -g https://github.com/dquancruz/engineering-toolkit/releases/download/v0.8.0/engineering-toolkit-0.8.0.tgz
 engkit --help
 ```
 
-npm may print an `install-scripts` warning about `prepare`; it is harmless because the tarball already contains the built `dist/`. Replace `0.7.0` (in both places) with the version you want. Releases are listed at <https://github.com/dquancruz/engineering-toolkit/releases>. A release is created by pushing a `v*` tag; the workflow in `.github/workflows/release.yml` runs the tests, runs `npm pack` and attaches the `.tgz`. The tag must match the version in `package.json`; see [Release cycle](#release-cycle).
+npm may print an `install-scripts` warning about `prepare`; it is harmless because the tarball already contains the built `dist/`. Replace `0.8.0` (in both places) with the version you want. Releases are listed at <https://github.com/dquancruz/engineering-toolkit/releases>. A release is created by pushing a `v*` tag; the workflow in `.github/workflows/release.yml` runs the tests, runs `npm pack` and attaches the `.tgz`. The tag must match the version in `package.json`; see [Release cycle](#release-cycle).
 
 **Alternative: clone and link** (for development)
 
@@ -101,6 +102,7 @@ One phase is one branch and one PR, and each phase ends in a release. There is n
 
 ```bash
 npm version <new version> --no-git-tag-version      # package.json and package-lock.json
+(cd web && npm version <new version> --no-git-tag-version)   # the web app carries the same version
 npm run build
 node dist/cli.js --lang en changelog v<previous tag> HEAD --release v<new version>
 git commit -am "chore(release): v<new version>"
@@ -341,7 +343,7 @@ Use it in CI:
 - uses: actions/checkout@v7
   with:
     fetch-depth: 0        # full history, needed by adr-immutable and log-append-only
-- run: npm i -g https://github.com/dquancruz/engineering-toolkit/releases/download/v0.7.0/engineering-toolkit-0.7.0.tgz
+- run: npm i -g https://github.com/dquancruz/engineering-toolkit/releases/download/v0.8.0/engineering-toolkit-0.8.0.tgz
 - run: engkit check --strict
 ```
 
@@ -897,6 +899,16 @@ Defaults: name `Oncall Engineer`, sprint `Current Sprint`. Output file: `oncall_
 - `npm start -- <args>` in `tools/jira-defects-report` is now `engkit jira report <args>`; `tools/oncall-ticket-creator` is now `engkit jira oncall <args>`. Report and ticket contents are unchanged.
 - Output goes to `reports/` and `tickets/` **in the current directory** (previously the tool's own folder). Use `--out <dir>` to choose another directory.
 - The usage error for a missing argument now comes from the CLI parser, so its wording differs.
+
+---
+
+## 🌐 Web utilities
+
+[`web/`](web/README.md) is a static site with a JSON formatter and type generator, a JSON / YAML / TOML / CSV / XML converter, a regex tester and a JWT decoder. Everything runs in the browser: nothing typed is sent anywhere. It is a separate package, is not part of the `engkit` install, and is not deployed automatically.
+
+```bash
+cd web && npm ci && npm run dev
+```
 
 ---
 
