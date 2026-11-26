@@ -38,4 +38,4 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
-      - run: npx vitest run test/agent test/branch test/changelog test/env test/legacy test/rebuild
+      - run: npx vitest run test/agent test/branch test/changelog test/env test/legacy test/rebuild test/sources-compat.test.ts
