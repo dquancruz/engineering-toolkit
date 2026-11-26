@@ -9,6 +9,7 @@ import { AGENT_CHOICES, PROFILES, parseProfiles, runInitProfiles, type Profile }
 import { runAgentTestGuards } from "./commands/agent.js";
 import { runBranch } from "./commands/branch.js";
 import { runChangelog } from "./commands/changelog.js";
+import { runEnvCheck, runEnvExample } from "./commands/env.js";
 import type { AgentChoice } from "./agent/install.js";
 import { runJiraOncall } from "./commands/jira-oncall.js";
 import { runJiraReport } from "./commands/jira-report.js";
@@ -311,6 +312,49 @@ Examples:
     )
     .action((refs: string[], opts: { release?: string; fromStart?: boolean; stdout?: boolean; force?: boolean; all?: boolean }) => {
       process.exitCode = runChangelog(ctx.lang, refs, opts);
+    });
+
+  const env = program.command("env").description("Work with the variable names of .env files (values are never printed or written)");
+
+  env
+    .command("example")
+    .description("Create .env.example from the variable names of the .env files, or add the missing ones")
+    .addHelpText(
+      "after",
+      `
+Reads .env and .env.* in this folder (not *.example, *.sample, *.template, *.dist or backups).
+Writes only NAME= lines; values and comments are never copied. Existing lines are not touched.
+If a line cannot be read for certain, nothing is written and only the file and line number are shown.
+
+Exit code: 0 ok, 2 it could not be done.
+
+Example:
+  engkit env example`
+    )
+    .action(() => {
+      process.exitCode = runEnvExample();
+    });
+
+  env
+    .command("check")
+    .description("List the variables each .env file lacks compared with .env.example")
+    .argument("[files...]", "files to compare (default: every .env file in this folder)")
+    .option("--json", "print the result as JSON")
+    .addHelpText(
+      "after",
+      `
+Without .env.example each file is compared with all the variables of the compared files.
+Variables that are not in .env.example are reported as warnings. A variable with an empty value counts
+as present. Only names are shown.
+
+Exit code: 0 nothing missing, 1 missing variables, 2 a file could not be read or there is nothing to compare.
+
+Examples:
+  engkit env check
+  engkit env check .env.local .env.production --json`
+    )
+    .action((files: string[], opts: { json?: boolean }) => {
+      process.exitCode = runEnvCheck(files, opts);
     });
 
   const jira = program.command("jira").description("Jira defect tools");
