@@ -5,6 +5,7 @@ import { parseFrontmatter, type ParsedDoc } from "../docs/frontmatter.js";
 import type { DocKey, DocPaths } from "../docs/files.js";
 import { DOC_KEYS } from "../docs/files.js";
 import { loadLegacy, type Legacy } from "../legacy/load.js";
+import { loadRebuild, type Rebuild } from "../rebuild/load.js";
 
 export class CheckSetupError extends Error {}
 
@@ -12,7 +13,7 @@ export class CheckSetupError extends Error {}
 export const STATUS_DOC_KEYS = ["claude", "agents", "glossary", "pending", "design"] as const;
 
 export interface Doc {
-  key: DocKey | "adr" | "sources";
+  key: DocKey | "adr" | "sources" | "requirements" | "rebuild-plan" | "strangler";
   /** Project-relative path with "/" separators. */
   file: string;
   text: string;
@@ -36,6 +37,8 @@ export interface Project {
   missing: string[];
   /** The legacy profile, when `.engkit.json` has a "legacy" section. */
   legacy: Legacy | null;
+  /** The rebuild profile, when `.engkit.json` has a "rebuild" section. */
+  rebuild: Rebuild | null;
 }
 
 function read(cwd: string, file: string): Doc["text"] | null {
@@ -96,7 +99,21 @@ export function loadProject(cwd: string): Project {
   // the sources register is a status document: it gets the same owner and date rules
   if (legacy?.sources) docs.push({ key: "sources", file: legacy.sources.file, text: legacy.sources.text, fm: legacy.sources.fm });
 
-  return { cwd, paths, docs, adrs, hasAdrTemplate, missing, legacy };
+  const rebuild = config.rebuild ? loadRebuild(cwd, config.rebuild) : null;
+  // the requirements, the rebuild plan and the strangler plan are status documents too
+  const extra = [
+    ["requirements", config.requirements?.doc],
+    ["rebuild-plan", config.rebuild?.plan],
+    ["strangler", config.rebuild?.strangler],
+  ] as const;
+  for (const [key, file] of extra) {
+    if (file === undefined) continue;
+    const text = read(cwd, file);
+    if (text === null) missing.push(file);
+    else docs.push({ key, file, text, fm: parseFrontmatter(text) });
+  }
+
+  return { cwd, paths, docs, adrs, hasAdrTemplate, missing, legacy, rebuild };
 }
 
 export const str = (v: unknown): string | null => {

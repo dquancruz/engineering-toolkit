@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import YAML, { Scalar, isMap, isSeq } from "yaml";
 import { deletedFiles } from "../check/git.js";
-import { openQuestions } from "../check/rules/legacy.js";
+import { openQuestions } from "../check/links.js";
 import { loadProject } from "../check/project.js";
 import { CONFIG_FILE, LOCAL_CONFIG_FILE, evidenceRoots, loadConfig, updateConfigFile, type LegacyPaths } from "../config.js";
 import { slugify } from "../docs/adr.js";

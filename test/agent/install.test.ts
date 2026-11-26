@@ -154,7 +154,7 @@ describe("engkit init profiles", () => {
   it("parses combinable profiles and rejects unknown ones", () => {
     expect(parseProfiles("base")).toEqual(["base"]);
     expect(parseProfiles("base, agent,agent")).toEqual(["base", "agent"]);
-    expect(() => parseProfiles("base,rebuild")).toThrow(/Invalid profile "rebuild"/);
+    expect(() => parseProfiles("base,nope")).toThrow(/Invalid profile "nope"/);
     expect(() => parseProfiles(" , ")).toThrow(/Empty/);
   });
 

@@ -15,6 +15,7 @@ import {
   itemFilePattern,
 } from "../../legacy/model.js";
 import { generateRulesIndex } from "../../legacy/rules-index.js";
+import { adrStatuses, allQuestions as questionIds, openQuestions } from "../links.js";
 import { deletedFiles, shortSha } from "../git.js";
 import type { Project } from "../project.js";
 import { str } from "../project.js";
@@ -24,16 +25,6 @@ import type { Report, Severity } from "../types.js";
 /** A reference to code (`erp:src/x.cbl:10`) written inside a source entry. */
 function codeReference(value: string, roots: string[]): boolean {
   return roots.some((root) => new RegExp(`(^|[^\\w-])${root}:[^\\s:]+:\\d+`).test(value));
-}
-
-export function openQuestions(project: Project): Set<string> {
-  const pending = project.docs.find((d) => d.key === "pending");
-  if (!pending) return new Set();
-  return new Set(
-    parsePendingEntries(visibleText(pending.text))
-      .filter((e) => e.fields["status"]?.value === "open")
-      .map((e) => e.id)
-  );
 }
 
 /**
@@ -120,10 +111,8 @@ export function checkLegacyLinks(project: Project, legacy: Legacy, roots: string
   };
   const sources = new Map((legacy.sources?.entries ?? []).map((e) => [e.id, e]));
   const questions = openQuestions(project);
-  const allQuestions = new Set(
-    project.docs.filter((d) => d.key === "pending").flatMap((d) => parsePendingEntries(visibleText(d.text)).map((e) => e.id))
-  );
-  const adrs = new Map(project.adrs.map((a) => [`ADR-${String(a.number).padStart(4, "0")}`, str(a.fm?.data["status"])]));
+  const allQuestions = questionIds(project);
+  const adrs = adrStatuses(project);
 
   const tested = (key: "rules" | "defects", id: string) => legacy.items.test.some((t) => listField(t, key)?.includes(id));
   const finding = (rule: string, severity: Severity, item: LegacyItem, key: string, message: string) =>
