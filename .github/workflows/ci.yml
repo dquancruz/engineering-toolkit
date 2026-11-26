@@ -13,8 +13,8 @@ jobs:
       matrix:
         node: [22, 24, 26]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: ${{ matrix.node }}
           cache: npm
@@ -23,7 +23,7 @@ jobs:
       - run: npm test
       - run: npm audit --audit-level=moderate
 
-  # The agent guards and the git and .env commands run on the developer's machine, so they are tested
+  # The agent guards and the git, .env and evidence commands run on the developer's machine, so they are tested
   # on Windows and macOS too. The rest of the suite still assumes Linux (see ROADMAP, "Future ideas").
   portability:
     runs-on: ${{ matrix.os }}
@@ -32,10 +32,10 @@ jobs:
       matrix:
         os: [windows-latest, macos-latest]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: npm
       - run: npm ci
-      - run: npx vitest run test/agent test/branch test/changelog test/env
+      - run: npx vitest run test/agent test/branch test/changelog test/env test/legacy

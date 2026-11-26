@@ -1,18 +1,27 @@
 import { parsePendingEntries } from "../../docs/pending.js";
+import type { ItemKind } from "../../legacy/model.js";
 import type { Project } from "../project.js";
 import { str } from "../project.js";
 import { fieldLine, visibleText } from "../text.js";
 import type { Report } from "../types.js";
 
 /**
- * Kinds of references the checker knows. Later phases add RN-, D- and PA- here.
- * `ids(project)` returns the IDs that exist for that kind.
+ * Kinds of references the checker knows. `ids(project)` returns the IDs that exist for that kind.
+ * RN-, PA-, D- and F- only count in projects with the legacy profile.
  */
 interface RefKind {
   name: string;
   pattern: RegExp;
   ids: (project: Project) => Set<string>;
+  legacyOnly?: boolean;
 }
+
+const legacyKind = (name: "RN" | "PA" | "D", kind: ItemKind): RefKind => ({
+  name,
+  pattern: new RegExp(`\\b${name}-\\d{4}\\b`, "g"),
+  ids: (p) => new Set(p.legacy?.items[kind].map((i) => i.id)),
+  legacyOnly: true,
+});
 
 const adrId = (n: number) => `ADR-${String(n).padStart(4, "0")}`;
 
@@ -34,13 +43,20 @@ const REF_KINDS: RefKind[] = [
       return new Set(pending ? parsePendingEntries(visibleText(pending.text)).map((e) => e.id) : []);
     },
   },
+  legacyKind("RN", "rule"),
+  legacyKind("PA", "test"),
+  legacyKind("D", "defect"),
+  { name: "F", pattern: /\bF-\d{2,}\b/g, ids: (p) => new Set(p.legacy?.sources?.entries.map((e) => e.id)), legacyOnly: true },
 ];
 
-/** `broken-ref`: every ADR-xxxx / P-xx reference (body, supersedes, superseded_by) points to something that exists. */
+/** `broken-ref`: every ADR-xxxx / P-xx (and, with the legacy profile, RN / PA / D / F) reference (body, supersedes, superseded_by) points to something that exists. */
 export function checkReferences(project: Project, report: Report): void {
-  const known = REF_KINDS.map((kind) => ({ kind, ids: kind.ids(project) }));
+  const kinds = REF_KINDS.filter((kind) => project.legacy || !kind.legacyOnly);
+  const known = kinds.map((kind) => ({ kind, ids: kind.ids(project) }));
+  const legacy = project.legacy;
+  const legacyDocs = legacy ? Object.values(legacy.items).flat() : [];
 
-  for (const doc of [...project.docs, ...project.adrs]) {
+  for (const doc of [...project.docs, ...project.adrs, ...legacyDocs]) {
     const lines = visibleText(doc.text).split("\n");
     lines.forEach((text, i) => {
       for (const { kind, ids } of known) {

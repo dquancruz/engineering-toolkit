@@ -4,6 +4,7 @@ import { docPath, loadConfig } from "../config.js";
 import { parseFrontmatter, type ParsedDoc } from "../docs/frontmatter.js";
 import type { DocKey, DocPaths } from "../docs/files.js";
 import { DOC_KEYS } from "../docs/files.js";
+import { loadLegacy, type Legacy } from "../legacy/load.js";
 
 export class CheckSetupError extends Error {}
 
@@ -11,7 +12,7 @@ export class CheckSetupError extends Error {}
 export const STATUS_DOC_KEYS = ["claude", "agents", "glossary", "pending", "design"] as const;
 
 export interface Doc {
-  key: DocKey | "adr";
+  key: DocKey | "adr" | "sources";
   /** Project-relative path with "/" separators. */
   file: string;
   text: string;
@@ -25,7 +26,7 @@ export interface AdrDoc extends Doc {
 export interface Project {
   cwd: string;
   paths: DocPaths;
-  /** Existing documents among: claude, agents, glossary, pending, design, log. */
+  /** Existing documents among: claude, agents, glossary, pending, design, log (and the legacy sources register). */
   docs: Doc[];
   /** ADRs with number >= 1, sorted by number. */
   adrs: AdrDoc[];
@@ -33,6 +34,8 @@ export interface Project {
   hasAdrTemplate: boolean;
   /** Managed files that are configured but missing on disk. */
   missing: string[];
+  /** The legacy profile, when `.engkit.json` has a "legacy" section. */
+  legacy: Legacy | null;
 }
 
 function read(cwd: string, file: string): Doc["text"] | null {
@@ -87,7 +90,13 @@ export function loadProject(cwd: string): Project {
   if (read(cwd, paths.adrTemplate) !== null) hasAdrTemplate = true;
   else if (!hasAdrTemplate) missing.push(paths.adrTemplate);
 
-  return { cwd, paths, docs, adrs, hasAdrTemplate, missing };
+  const legacy = config.legacy ? loadLegacy(cwd, config.legacy) : null;
+  if (legacy && !legacy.sources) missing.push(legacy.paths.sources);
+
+  // the sources register is a status document: it gets the same owner and date rules
+  if (legacy?.sources) docs.push({ key: "sources", file: legacy.sources.file, text: legacy.sources.text, fm: legacy.sources.fm });
+
+  return { cwd, paths, docs, adrs, hasAdrTemplate, missing, legacy };
 }
 
 export const str = (v: unknown): string | null => {

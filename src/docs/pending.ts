@@ -23,11 +23,17 @@ export interface PendingEntry {
  * `visible` is the text with code, comments and frontmatter blanked (see `visibleText`), so line numbers stay valid.
  */
 export function parsePendingEntries(visible: string): PendingEntry[] {
+  return parseEntries(visible, "P");
+}
+
+/** Same format for any `### <prefix>-NN: title` register (pending items, evidence sources). */
+export function parseEntries(visible: string, prefix: "P" | "F"): PendingEntry[] {
+  const pattern = new RegExp(`^###\\s+(${prefix}-\\d+)\\b\\s*:?\\s*(.*)$`);
   const entries: PendingEntry[] = [];
   let current: PendingEntry | null = null;
   visible.split("\n").forEach((raw, i) => {
     const line = raw.replace(/\r$/, "");
-    const heading = /^###\s+(P-\d+)\b\s*:?\s*(.*)$/.exec(line);
+    const heading = pattern.exec(line);
     if (heading) {
       current = { id: heading[1]!, line: i + 1, title: (heading[2] ?? "").trim(), fields: {} };
       entries.push(current);

@@ -1,5 +1,11 @@
 # Changelog
 
+## [v0.6.0] - 2026-11-26
+
+### Features
+
+- add the legacy profile with business rules, acceptance tests, defects and hashed code evidence (9556f9f)
+
 ## [v0.5.0] - 2026-11-26
 
 ### Features

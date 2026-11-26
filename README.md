@@ -33,6 +33,7 @@ engineering-toolkit/
 │   ├── changelog/              Conventional Commits parser, sections and CHANGELOG.md editing
 │   ├── env/                    .env variable name reader (never returns values)
 │   ├── checklists/             parser of the checklists used by `engkit prompt --checklist`
+│   ├── legacy/                 business rules, tests, defects, code evidence and the rule index
 │   └── commands/               one module per command
 ├── templates/                  es/en document templates; agent/guard.mjs is the Claude Code guard hook
 ├── test/                       vitest tests and fixtures
@@ -56,11 +57,11 @@ The CLI is not published to npm. `dist/` is not versioned, so releases ship a pr
 **Main method: install the tarball from a GitHub Release**
 
 ```bash
-npm i -g https://github.com/dquancruz/engineering-toolkit/releases/download/v0.5.0/engineering-toolkit-0.5.0.tgz
+npm i -g https://github.com/dquancruz/engineering-toolkit/releases/download/v0.6.0/engineering-toolkit-0.6.0.tgz
 engkit --help
 ```
 
-npm may print an `install-scripts` warning about `prepare`; it is harmless because the tarball already contains the built `dist/`. Replace `0.5.0` (in both places) with the version you want. Releases are listed at <https://github.com/dquancruz/engineering-toolkit/releases>. A release is created by pushing a `v*` tag; the workflow in `.github/workflows/release.yml` runs the tests, runs `npm pack` and attaches the `.tgz`. The tag must match the version in `package.json`; see [Release cycle](#release-cycle).
+npm may print an `install-scripts` warning about `prepare`; it is harmless because the tarball already contains the built `dist/`. Replace `0.6.0` (in both places) with the version you want. Releases are listed at <https://github.com/dquancruz/engineering-toolkit/releases>. A release is created by pushing a `v*` tag; the workflow in `.github/workflows/release.yml` runs the tests, runs `npm pack` and attaches the `.tgz`. The tag must match the version in `package.json`; see [Release cycle](#release-cycle).
 
 **Alternative: clone and link** (for development)
 
@@ -107,32 +108,29 @@ If more commits land during review, run the same `changelog` command with `--for
 
 **2. Merge** the PR once CI is green, with a **merge commit** (squash or rebase would rewrite the commit IDs listed in `CHANGELOG.md`).
 
-**3. Pull:**
+**3 to 6. Pull, verify, tag and check the release.** Run it as one block: every step is chained with `&&`, so it **stops** at the first one that fails, and no tag is created if the version or CI is wrong.
 
 ```bash
-git switch main && git pull --ff-only
+V=<new version>        # for example 0.6.0
+run_id() { gh run list --workflow "$1" --commit "$(git rev-parse HEAD)" --limit 1 --json databaseId --jq '.[0].databaseId'; }
+
+git switch main && git pull --ff-only &&                          # 3. pull
+git log -1 &&                                                     # 4. the merge of the PR
+test "$(node -p "require('./package.json').version")" = "$V" &&   #    the new version
+sleep 10 &&
+gh run watch "$(run_id ci.yml)" --exit-status &&                  #    CI is green on that commit
+git tag "v$V" && git push origin "v$V" &&                         # 5. tag, and push only the tag
+sleep 10 &&
+gh run watch "$(run_id release.yml)" --exit-status &&             # 6. the release workflow
+gh release view "v$V"                                             #    includes engineering-toolkit-$V.tgz
 ```
 
-**4. Verify** before tagging:
+`release.yml` runs the tests, checks that the tag matches `package.json`, builds the `.tgz` and creates the GitHub Release. Its notes are `engkit changelog <previous tag> <tag> --stdout` plus a compare link (GitHub's generated notes if there is no previous tag). `gh run watch` needs the run ID when it is not run in an interactive terminal; the `sleep` gives GitHub time to register the run.
+
+**If the tag points to the wrong commit** and no release was created (`gh release view "v$V"` says it is not found), delete it and run the block again:
 
 ```bash
-git log -1                                          # the merge of the PR
-node -p "require('./package.json').version"         # the new version
-gh run list --branch main --limit 3                 # CI is green on that commit
-```
-
-**5. Tag** and push only the tag:
-
-```bash
-git tag v<new version>
-git push origin v<new version>
-```
-
-**6. Check the release.** `release.yml` runs the tests, checks that the tag matches `package.json`, builds the `.tgz` and creates the GitHub Release. Its notes are `engkit changelog <previous tag> <tag> --stdout` plus a compare link (GitHub's generated notes if there is no previous tag).
-
-```bash
-gh run watch
-gh release view v<new version>                      # includes engineering-toolkit-<new version>.tgz
+git push origin ":refs/tags/v$V" && git tag -d "v$V"
 ```
 
 ### Global options
@@ -150,7 +148,7 @@ Language precedence: `--lang` flag, then `.engkit.json` in the current directory
 { "lang": "en" }
 ```
 
-### `engkit init [--profile base[,agent]] [--owner "<name>"]`
+### `engkit init [--profile base[,agent,legacy]] [--owner "<name>"]`
 
 Creates the base documents of a project and stores the language and the **path of each document** in `.engkit.json`. `engkit new` and `engkit index` read the paths from that file, not from the language. Existing files are never overwritten: they are reported and skipped.
 
@@ -185,6 +183,8 @@ engkit --lang en init --owner "Jane Doe"
 The log has only `id` and `owner`: its dates live in each `## YYYY-MM-DD` entry, so appending an entry never edits the frontmatter. Each pending entry (`### P-xx`) lists `type` (`review` \| `question`), `status` (`open` \| `closed`), `owner` and `date`.
 
 The templates are generic and follow a few principles: every fact carries a source, a date and an owner; link instead of duplicating; status documents show their date; what an automated test can verify is a test, not a paragraph; write only what someone will need for a future decision and cannot be derived from the code.
+
+The `agent` and [`legacy`](#legacy-profile-engkit-init---profile-legacy) profiles are additive.
 
 #### Agent profile: `engkit init --profile agent`
 
@@ -294,9 +294,9 @@ After the acceptance is **committed**, the ADR is immutable: `engkit check` allo
 
 ### `engkit index`
 
-Regenerates the ADR index (number, title, status, date, supersedes / superseded by). It is a generated file and says so in its header: do not edit it. `new adr` and `adr accept` run it for you; `check` warns (`index-stale`) when it is out of date.
+With the legacy profile it also regenerates the [rule index](#rule-index). Regenerates the ADR index (number, title, status, date, supersedes / superseded by). It is a generated file and says so in its header: do not edit it. `new adr` and `adr accept` run it for you; `check` warns (`index-stale`) when it is out of date.
 
-### `engkit check [--json] [--strict]`
+### `engkit check [--json] [--strict] [--allow-unavailable-evidence]`
 
 Verifies the project documents. Output is one line per finding, `file:line  severity  [rule]  message`, and exits **0** without errors, **1** with errors and **2** when the project cannot be checked (no `.engkit.json`: run `engkit init`). `--json` prints `{ ok, errors[], warnings[], summary }`. `--strict` turns warnings into errors.
 
@@ -317,6 +317,8 @@ Verifies the project documents. Output is one line per finding, `file:line  seve
 | `git-history` | warning | The git-based rules could not run or cannot be trusted (see below) |
 | `missing-doc` | warning | A document configured in `.engkit.json` does not exist |
 
+With the legacy profile there are more rules: see [Legacy profile](#legacy-profile-engkit-init---profile-legacy).
+
 **How the git rules work.** For each ADR, `check` lists the commits that touched the file (following renames) and finds the first one where `status` is `accepted`. From there, every step (commit to commit, and finally the working tree against `HEAD`) must be an allowed change, so an edit that is later reverted is still caught, and an uncommitted edit is caught before you commit. The log is checked the same way: each version must start with all the lines of the previous one. Commit order is used, not dates.
 
 **When there is no usable history,** the rules never pass silently:
@@ -334,12 +336,130 @@ Known limits: history is assumed to be mostly linear, and an accepted ADR cannot
 Use it in CI:
 
 ```yaml
-- uses: actions/checkout@v4
+- uses: actions/checkout@v7
   with:
     fetch-depth: 0        # full history, needed by adr-immutable and log-append-only
-- run: npm i -g https://github.com/dquancruz/engineering-toolkit/releases/download/v0.5.0/engineering-toolkit-0.5.0.tgz
+- run: npm i -g https://github.com/dquancruz/engineering-toolkit/releases/download/v0.6.0/engineering-toolkit-0.6.0.tgz
 - run: engkit check --strict
 ```
+
+### Legacy profile: `engkit init --profile legacy`
+
+For documenting a system that will be maintained or rebuilt: what it does (business rules), how that is checked (acceptance tests), what is wrong with it (defects) and where each fact comes from. Run it with the base documents (`engkit init --profile base,legacy`), which `check` needs. It adds a `legacy` section and `evidenceRoots` to `.engkit.json`, adds `.engkit.local.json` to `.gitignore` and never overwrites a file.
+
+| es / en | ID | Content |
+|---|---|---|
+| `docs/reglas/` / `docs/rules/` | `RN-0001` | One business rule per file |
+| `docs/pruebas/` / `docs/acceptance/` | `PA-0001` | One acceptance test per file (given, when, then) |
+| `docs/defectos/` / `docs/defects/` | `D-0001` | One defect of the old system per file |
+| `docs/fuentes.md` / `sources.md` | `F-01` | Register of the sources |
+| `docs/REGLAS.md` / `RULES.md` | | Generated rule index |
+
+Open questions stay in the pending file (`P-xx`). One file per item keeps diffs and history per rule and avoids merge conflicts when rules are added in parallel; a repeated ID is caught by `check`. Files are named `<ID>-description.md`.
+
+```bash
+engkit new rn "Late fee after 30 days" --area billing
+engkit evidence add RN-0001 erp:src/billing/fee.cbl:120-128
+engkit new pa "Fee on day 31" --rule RN-0001 --source F-02
+engkit new defecto "Fee is charged twice" --rule RN-0001     # alias: new defect
+engkit index && engkit check --strict
+```
+
+`new` takes the highest number plus one, counting deleted files, so an ID is not reused. `--rule`, `--source`, `--defect` and `--question` are repeatable and must exist.
+
+#### Sources
+
+Each entry of the sources register says what it is and how it was obtained. All four fields are required:
+
+```markdown
+### F-02: Billing manager
+
+- type: person
+- obtained_by: Jane Doe
+- obtained_on: 2026-03-09
+- method: interview
+```
+
+`type` is `code`, `database`, `schema`, `data`, `document` or `person`. Stored procedures and other code kept in a database are `code`.
+
+**Why a test cannot take its expected result from code.** Every PA names `expected_source`: one or more `F-xx` that are not of type `code`. An expected value copied from the code under test only confirms that the code does what it does, defects included, so it can never fail for the right reason. It has to come from somewhere that can disagree with the code: a person, a document, real data. `check` rejects a missing `expected_source`, an unknown ID, a source of type `code`, a code reference (`erp:path:10`) in the field and a source whose entry cites one. It cannot know whether a person or a document actually got the value from the code; that is for the reviewer.
+
+#### States and links
+
+| Item | `status` | Other fields |
+|---|---|---|
+| Rule | `draft`, `confirmed`, `modified`, `discarded`, `disputed` | `area`, `evidence`, `questions`, `decision` (ADR) |
+| Test | `draft`, `ready` | `rules`, `defects`, `expected_source` |
+| Defect | `suspected`, `confirmed`, `discarded` | `decision`: `preserve`, `fix`, `undecided`; `rules`, `evidence`, `questions` |
+
+`modified` means the new system changes the rule on purpose: `decision: ADR-0004` explains why, and the rule keeps the evidence of the **old** behaviour. Rules are discarded, not deleted. All items need `owner` and `date`.
+
+Each link is written on one side only (`PA → RN`, `PA → D`, `D → RN`, `RN`/`D → P`); the index computes the reverse.
+
+| Condition | `check` rule | Severity |
+|---|---|---|
+| `confirmed` or `modified` rule without evidence | `rule-evidence` | error |
+| `modified` rule without `decision: ADR-xxxx` | `rule-decision` | error |
+| ... the ADR does not exist | `broken-ref` | error |
+| ... the ADR is not `accepted` | `rule-decision` | warning |
+| `disputed` rule without an open `P-xx` | `rule-question` | error |
+| `confirmed` or `modified` rule with an open `P-xx` | `rule-question` | warning |
+| `confirmed` or `modified` rule without a PA | `rule-untested` | warning |
+| PA without rules | `test-rule` | error |
+| PA without a valid `expected_source` | `expected-source` / `broken-ref` | error |
+| PA pointing to a `discarded` rule (any PA status) | `test-discarded-rule` | warning |
+| `confirmed` defect without evidence | `defect-evidence` | error |
+| `undecided` defect without an open `P-xx` | `defect-question` | warning |
+| `fix` defect without a PA | `defect-untested` | warning |
+| A source entry with a missing or invalid field | `source-entry` | error |
+| Unknown `RN`, `PA`, `D`, `F`, `P` or `ADR` ID, in a field or a body | `broken-ref` | error |
+| Rule file deleted in git history | `rule-deleted` | warning |
+| `.md` file in an item folder with another name | `legacy-file` | warning |
+
+(`discarded` defects are exempt from the two decision warnings.) `unique-id`, `frontmatter`, `todo-field` and `status-date` also apply. These rules run only when `.engkit.json` has a `legacy` section, so other projects that mention `D-0001` are not affected.
+
+#### Code evidence
+
+Code is cited, never copied. A reference is `<root>:<path>:<line>` or `<root>:<path>:<start>-<end>`, and `engkit evidence add` records next to it a hash of those lines (and the commit, when the file is tracked and clean there):
+
+```yaml
+evidence:
+  - ref: erp:src/billing/fee.cbl:120-128
+    hash: "3f9a1c0b7d2e"
+    commit: "8be12aa04c1f"
+  - source: F-02          # evidence that is not code
+```
+
+Roots say where the old code is; paths are relative to the project or absolute. `self` is the project itself.
+
+```json
+{ "evidenceRoots": { "erp": { "path": "../old-erp", "repo": "git@example.com:org/old-erp.git" } } }
+```
+
+A machine with the code elsewhere overrides the path in `.engkit.local.json` (not versioned), with the same shape. `repo` is informative only.
+
+The hash is 12 hex characters of SHA-256 over the bytes of the lines without leading and trailing spaces, so re-indenting or changing line endings does not matter and the file's encoding does not either.
+
+| Situation | `check` |
+|---|---|
+| The hash matches those lines | ok |
+| It matches exactly one other place | `evidence-moved` (warning), with the new lines |
+| It matches several places | `evidence-ambiguous` (warning) |
+| The range has fewer than 12 non-space characters (`}`, `END-IF.`) | `evidence-weak` (warning) |
+| The content is gone, or the file or lines are missing | `evidence-changed` / `evidence-missing`: **error** for `confirmed` and `modified` rules and `confirmed` defects, warning otherwise |
+| No hash (written by hand) | `evidence-unrecorded` (warning) |
+| Invalid reference, unknown root, unquoted hash | `evidence-invalid` (error) |
+| The root folder is not available | `evidence-unavailable`: one warning per root with the number of references **not verified** |
+
+With `--strict` warnings become errors, including `evidence-unavailable`. In a CI that does not have the old code, say so explicitly with `engkit check --strict --allow-unavailable-evidence`: that one warning stays a warning and the report still says how many references were not verified.
+
+`engkit evidence update [IDs...]` rewrites the line numbers of references that **moved**. Content that **changed** is recorded again only for the items named in `--accept <ID>`: read the rule against the new code first. Exit code: `0` up to date, `1` something needs review, `2` bad input.
+
+A reference cannot leave its root (`..`, absolute paths and symlinks pointing outside are rejected) and `.env` files cannot be cited. `engkit` reads the cited files to hash them and never prints or stores their content. Note that a `.engkit.json` can point a root anywhere on your disk, so review changes to `evidenceRoots` as you would review code.
+
+#### Rule index
+
+`engkit index` also writes `docs/REGLAS.md` (`RULES.md`): ID, title, area, status, number of evidences, tests, defects, open questions and owner, ordered by area and ID, with totals per status. It says nothing about whether evidence is current, because that depends on each machine's roots. Resolve merge conflicts in it by regenerating it.
 
 ### `engkit prompt`
 
