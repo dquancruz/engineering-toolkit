@@ -29,7 +29,9 @@ export interface Fixture {
   cleanup: () => void;
 }
 
-export const read = (dir: string, file: string) => fs.readFileSync(path.join(dir, file), "utf-8");
+export const raw = (dir: string, file: string) => fs.readFileSync(path.join(dir, file), "utf-8");
+/** With LF line endings: on Windows git checks the templates out with CRLF. */
+export const read = (dir: string, file: string) => raw(dir, file).replace(/\r\n/g, "\n");
 export const write = (dir: string, file: string, text: string) => {
   fs.mkdirSync(path.dirname(path.join(dir, file)), { recursive: true });
   fs.writeFileSync(path.join(dir, file), text);
@@ -38,7 +40,7 @@ export const edit = (dir: string, file: string, from: string | RegExp, to: strin
   const text = read(dir, file);
   const next = text.replace(from, () => to);
   if (next === text) throw new Error(`edit did not change ${file}: ${from}`);
-  write(dir, file, next);
+  write(dir, file, raw(dir, file).includes("\r\n") ? next.replace(/\n/g, "\r\n") : next);
 };
 export const oldCode = (old: string, lines: string[]) => write(old, "src/fee.cbl", lines.join("\n") + "\n");
 

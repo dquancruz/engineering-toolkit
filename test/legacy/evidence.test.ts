@@ -6,7 +6,7 @@ import { runInitLegacy } from "../../src/commands/legacy.js";
 import { parseRef } from "../../src/legacy/evidence.js";
 import { git } from "../git-helpers.js";
 import { captureConsole } from "../helpers.js";
-import { OLD_CODE, TODAY, check, commit, create, edit, evidence, oldCode, project, read, reindex, write, type Fixture } from "./helpers.js";
+import { OLD_CODE, TODAY, check, commit, create, edit, evidence, oldCode, project, raw, read, reindex, write, type Fixture } from "./helpers.js";
 
 let f: Fixture;
 let rule: string;
@@ -64,11 +64,17 @@ describe("engkit evidence add", () => {
     reindex(f.dir);
     expect(evidenceFindings().warnings).toEqual(["evidence-unrecorded RN-0001"]);
     cite();
-    const text = read(f.dir, rule);
+    const text = raw(f.dir, rule);
     expect(text.match(/ref:/g)).toHaveLength(1);
     expect(text).toContain("- source: F-01 # asked Jane");
-    expect(text.replace(/\r\n/g, "")).not.toContain("\n");
+    expect(text.replace(/\r\n/g, "")).not.toMatch(/[\r\n]/);
     expect(evidenceFindings().warnings).toEqual([]);
+  });
+
+  it("keeps LF files as LF", () => {
+    write(f.dir, rule, read(f.dir, rule));
+    cite();
+    expect(raw(f.dir, rule)).not.toContain("\r");
   });
 
   it("does not silently replace a recorded hash", () => {
