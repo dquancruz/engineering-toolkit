@@ -9,10 +9,11 @@ import type { Lang } from "../i18n/index.js";
 import { readTemplate } from "../i18n/index.js";
 import { AGENT_CHOICES, installAgentProfile, type AgentChoice } from "../agent/install.js";
 import { generateIndex } from "./index-cmd.js";
+import { runInitLegacy } from "./legacy.js";
 
 export { AGENT_CHOICES };
 
-export const PROFILES = ["base", "agent"] as const;
+export const PROFILES = ["base", "agent", "legacy"] as const;
 export type Profile = (typeof PROFILES)[number];
 
 /** Parses `--profile base,agent`. */
@@ -132,6 +133,7 @@ export async function runInitProfiles(lang: Lang, options: InitProfilesOptions =
   const profiles = options.profiles ?? ["base"];
   let code = 0;
   if (profiles.includes("base")) runInit(lang, options);
+  if (profiles.includes("legacy")) runInitLegacy(lang, options);
   if (profiles.includes("agent")) {
     const result = await installAgentProfile(lang, {
       ...(options.cwd !== undefined ? { cwd: options.cwd } : {}),

@@ -5,6 +5,7 @@ import { LANGS, type Lang } from "./i18n/index.js";
 import { runAdrAccept } from "./commands/adr.js";
 import { CheckSetupError, formatReport, runCheck } from "./commands/check.js";
 import { runIndex } from "./commands/index-cmd.js";
+import { runEvidenceAdd, runEvidenceUpdate, runNewItem, runRulesIndex, type NewItemOptions } from "./commands/legacy.js";
 import { AGENT_CHOICES, PROFILES, parseProfiles, runInitProfiles, type Profile } from "./commands/init.js";
 import { runAgentTestGuards } from "./commands/agent.js";
 import { runBranch } from "./commands/branch.js";
@@ -67,6 +68,8 @@ Profiles:
          shown and confirmed first (--yes skips the question; without a terminal nothing is written
          unless --yes). Protected branches come from "protectedBranches" in .engkit.json
          (default: main, master; patterns like release/* work).
+  legacy additive: the sources register (F-xx), folders for business rules (RN), acceptance tests (PA) and
+         defects (D), and the rule index. "engkit check" then verifies their links and the code evidence.
 
 Existing files are never overwritten: they are reported and skipped.
 The language and the path of each document are stored in .engkit.json,
@@ -148,6 +151,86 @@ Examples:
       runNewPending(title, ctx.lang, { type: opts.type, owner: opts.owner });
     });
 
+  const owner = ["--owner <name>", "owner (default: git config user.name, else TODO)"] as const;
+
+  create
+    .command("rn")
+    .description("Create the next business rule (legacy profile, status: draft)")
+    .argument("<title>", "short title of the rule")
+    .option("--area <area>", "group used by the rule index")
+    .option("--question <P-xx>", "open question about it (repeatable)", collect, [])
+    .option(...owner)
+    .addHelpText("after", `\nExample:\n  engkit new rn "Late fee after 30 days" --area billing`)
+    .action((title: string, opts: NewItemOptions) => {
+      runNewItem("rule", title, ctx.lang, opts);
+    });
+
+  create
+    .command("pa")
+    .description("Create the next acceptance test (legacy profile)")
+    .argument("<title>", "short title of the test")
+    .option("--rule <RN>", "business rule it checks (repeatable)", collect, [])
+    .option("--source <F-xx>", "source of the expected result, never code (repeatable)", collect, [])
+    .option("--defect <D>", "defect it covers (repeatable)", collect, [])
+    .option(...owner)
+    .addHelpText("after", `\nExample:\n  engkit new pa "Fee on day 31" --rule RN-0001 --source F-02`)
+    .action((title: string, opts: NewItemOptions) => {
+      runNewItem("test", title, ctx.lang, opts);
+    });
+
+  create
+    .command("defecto")
+    .alias("defect")
+    .description("Create the next defect of the old system (legacy profile, status: suspected)")
+    .argument("<title>", "short title of the defect")
+    .option("--rule <RN>", "business rule it affects (repeatable)", collect, [])
+    .option("--question <P-xx>", "open question about it (repeatable)", collect, [])
+    .option(...owner)
+    .addHelpText("after", `\nExample:\n  engkit new defecto "Fee is charged twice" --rule RN-0001`)
+    .action((title: string, opts: NewItemOptions) => {
+      runNewItem("defect", title, ctx.lang, opts);
+    });
+
+  const evidence = program.command("evidence").description("Code evidence of business rules and defects (legacy profile)");
+
+  evidence
+    .command("add")
+    .description("Cite lines of code as evidence, recording their hash (the code is not copied)")
+    .argument("<ID>", "RN-0001 or D-0001")
+    .argument("<ref>", "<root>:<path>:<line> or <root>:<path>:<start>-<end>")
+    .addHelpText(
+      "after",
+      `
+Roots come from "evidenceRoots" in .engkit.json ("self" is this project); .engkit.local.json overrides
+their paths on one machine. A reference written by hand without a hash gets it with this command.
+
+Exit code: 0 ok, 1 root not available or the recorded content differs, 2 bad input.
+
+Example:
+  engkit evidence add RN-0001 erp:src/billing/fee.cbl:120-128`
+    )
+    .action((id: string, ref: string) => {
+      process.exitCode = runEvidenceAdd(id, ref);
+    });
+
+  evidence
+    .command("update")
+    .description("Fix the line numbers of evidence that moved")
+    .argument("[IDs...]", "rules or defects (default: all)")
+    .option("--accept <ID>", "record the new content of this item's evidence, after reading it again (repeatable)", collect, [])
+    .addHelpText(
+      "after",
+      `
+Exit code: 0 up to date, 1 something needs review, 2 bad input.
+
+Examples:
+  engkit evidence update
+  engkit evidence update --accept RN-0001`
+    )
+    .action((ids: string[], opts: { accept: string[] }) => {
+      process.exitCode = runEvidenceUpdate(ids, opts);
+    });
+
   const adr = program.command("adr").description("Change the state of an ADR");
 
   adr
@@ -173,6 +256,7 @@ Example:
     .description("Verify the project documents (ADR immutability, dates, IDs, references, log, pending items)")
     .option("--json", "print the result as JSON")
     .option("--strict", "treat warnings as errors (recommended in CI)")
+    .option("--allow-unavailable-evidence", "with --strict, an evidence root that is not available stays a warning")
     .addHelpText(
       "after",
       `
@@ -184,6 +268,12 @@ The git-based rules need history: without git, with a shallow clone, or for chan
 committed yet they report a warning instead of passing silently. In CI use
 "actions/checkout" with fetch-depth: 0 and run "engkit check --strict".
 
+Legacy profile (when .engkit.json has "legacy"): source-entry, expected-source, test-rule, rule-evidence,
+rule-decision, rule-question, defect-evidence, legacy-field, evidence-invalid, evidence-changed and
+evidence-missing are errors or, for drafts, warnings; rule-untested, test-discarded-rule, defect-question,
+defect-untested, rule-deleted, legacy-file and the other evidence-* rules are warnings.
+Evidence whose root is not available is reported as not verified (evidence-unavailable).
+
 Exit code: 0 no errors, 1 errors found, 2 the project could not be checked (run "engkit init").
 
 Examples:
@@ -191,9 +281,12 @@ Examples:
   engkit check --json
   engkit check --strict`
     )
-    .action((opts: { json?: boolean; strict?: boolean }) => {
+    .action((opts: { json?: boolean; strict?: boolean; allowUnavailableEvidence?: boolean }) => {
       try {
-        const result = runCheck(ctx.lang, { strict: opts.strict === true });
+        const result = runCheck(ctx.lang, {
+          strict: opts.strict === true,
+          allowUnavailableEvidence: opts.allowUnavailableEvidence === true,
+        });
         console.log(opts.json ? JSON.stringify(result, null, 2) : formatReport(result));
         process.exitCode = result.ok ? 0 : 1;
       } catch (e) {
@@ -256,10 +349,15 @@ Examples:
 
   program
     .command("index")
-    .description("Generate the ADR index (a generated file; do not edit it)")
-    .addHelpText("after", "\nWrites the file stored as paths.decisions in .engkit.json (docs/DECISIONES.md or docs/DECISIONS.md).")
+    .description("Generate the ADR index and, with the legacy profile, the rule index (generated files; do not edit them)")
+    .addHelpText(
+      "after",
+      "\nWrites paths.decisions (docs/DECISIONES.md or docs/DECISIONS.md) and legacy.rulesIndex (docs/REGLAS.md or\ndocs/RULES.md) as stored in .engkit.json."
+    )
     .action(() => {
-      runIndex(ctx.lang);
+      const config = loadConfig();
+      if (config.paths || !config.legacy) runIndex(ctx.lang);
+      if (config.legacy) runRulesIndex(ctx.lang);
     });
 
   program
