@@ -26,6 +26,11 @@ csv/
 # Packaging
 *.tgz
 
+# Web app tests
+web/test-results/
+web/playwright-report/
+web/test/.tmp-typegen/
+
 # Logs
 logs/
 *.log

@@ -1,0 +1,223 @@
+/* Colour pairs meet WCAG AA contrast in both themes; the e2e tests check them with axe. */
+:root {
+  color-scheme: light;
+  --bg: #ffffff;
+  --surface: #f4f5f7;
+  --text: #16181d;
+  --muted: #474d5a;
+  --border: #6b7280;
+  --accent: #0b4fb3;
+  --accent-text: #ffffff;
+  --error: #8f1d14;
+  --error-bg: #fdecea;
+  --warning: #5c3d00;
+  --warning-bg: #fff4d6;
+  --ok: #155724;
+  --mark-a: #ffe08a;
+  --mark-b: #a9d5ff;
+  --mark-text: #101114;
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #14161a;
+  --surface: #1e2127;
+  --text: #eceef2;
+  --muted: #b9bfcb;
+  --border: #8a919e;
+  --accent: #8ab8ff;
+  --accent-text: #0b1526;
+  --error: #ffb4ab;
+  --error-bg: #3b1613;
+  --warning: #ffd980;
+  --warning-bg: #332600;
+  --ok: #9ee6a8;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg: #14161a;
+    --surface: #1e2127;
+    --text: #eceef2;
+    --muted: #b9bfcb;
+    --border: #8a919e;
+    --accent: #8ab8ff;
+    --accent-text: #0b1526;
+    --error: #ffb4ab;
+    --error-bg: #3b1613;
+    --warning: #ffd980;
+    --warning-bg: #332600;
+    --ok: #9ee6a8;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0 auto;
+  max-width: 70rem;
+  padding: 1rem;
+  background: var(--bg);
+  color: var(--text);
+  font: 1rem/1.5 system-ui, sans-serif;
+}
+header {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 1rem;
+}
+h1 {
+  margin: 0;
+  font-size: 1.5rem;
+}
+h3,
+caption {
+  font-size: 1rem;
+  font-weight: 600;
+  text-align: left;
+}
+header p {
+  margin: 0.25rem 0;
+  color: var(--muted);
+}
+button,
+select,
+input,
+textarea {
+  font: inherit;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+button,
+select {
+  padding: 0.4rem 0.8rem;
+  cursor: pointer;
+}
+button:disabled {
+  cursor: default;
+  border-style: dashed;
+  color: var(--muted);
+}
+button.primary,
+[role="tab"][aria-selected="true"] {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-text);
+  font-weight: 600;
+}
+:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+}
+[role="tablist"] {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 1rem 0;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid var(--border);
+}
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin: 0.5rem 0;
+}
+.field.inline {
+  flex-direction: row;
+  align-items: center;
+  margin: 0;
+}
+input[type="text"] {
+  padding: 0.5rem;
+}
+textarea {
+  width: 100%;
+  padding: 0.5rem;
+  resize: vertical;
+}
+textarea,
+input[type="text"],
+code,
+pre {
+  font-family: ui-monospace, monospace;
+}
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1rem;
+  margin: 0.5rem 0;
+}
+fieldset {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+.check {
+  display: inline-flex;
+  gap: 0.35rem;
+  align-items: center;
+}
+.box {
+  padding: 0.25rem 0.75rem;
+  border: 1px solid currentColor;
+  border-left-width: 6px;
+  border-radius: 6px;
+}
+p.box {
+  padding: 0.75rem;
+}
+.error {
+  color: var(--error);
+  background: var(--error-bg);
+}
+.warning {
+  color: var(--warning);
+  background: var(--warning-bg);
+}
+.detail {
+  overflow-wrap: anywhere;
+}
+.ok {
+  color: var(--ok);
+}
+.strong {
+  font-weight: 600;
+}
+.highlight {
+  max-height: 20rem;
+  overflow: auto;
+  padding: 0.75rem;
+  background: var(--surface);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+mark {
+  color: var(--mark-text);
+  background: var(--mark-a);
+  text-decoration: underline;
+  border: 1px solid var(--mark-text);
+}
+mark.odd {
+  background: var(--mark-b);
+  text-decoration-style: double;
+}
+.scroll {
+  max-height: 30rem;
+  overflow: auto;
+}
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+th,
+td {
+  padding: 0.35rem 0.5rem;
+  border: 1px solid var(--border);
+  text-align: left;
+  vertical-align: top;
+  overflow-wrap: anywhere;
+}
