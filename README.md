@@ -904,7 +904,7 @@ Defaults: name `Oncall Engineer`, sprint `Current Sprint`. Output file: `oncall_
 
 ## 🌐 Web utilities
 
-[`web/`](web/README.md) is a static site with a JSON formatter and type generator, a JSON / YAML / TOML / CSV / XML converter, a regex tester and a JWT decoder. Everything runs in the browser: nothing typed is sent anywhere. It is a separate package, is not part of the `engkit` install, and is not deployed automatically.
+[`web/`](web/README.md) is a static site with a JSON formatter and type generator, a JSON / YAML / TOML / CSV / XML converter, a regex tester, a JWT decoder and, on a second page, Mermaid diagrams (live drawing, SVG and PNG export, and code generated from tables). Everything runs in the browser: nothing typed is sent anywhere. It is a separate package, is not part of the `engkit` install, and is not deployed automatically.
 
 ```bash
 cd web && npm ci && npm run dev
