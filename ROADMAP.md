@@ -15,7 +15,7 @@ One phase = one branch = one PR. Status is updated in the PR that finishes each 
 | 6 | **Legacy profile**: `engkit init --profile legacy`, business rules, acceptance tests, defects and sources register, `engkit new rn\|pa\|defecto`, hashed code evidence with `engkit evidence`, rule index, extra `check` rules | Done |
 | 7 | **Requirements and rebuild profiles**: non-functional requirements and constraints, rebuild plan with vertical slices, strangler and data plans, `engkit requirements`, `engkit testplan` | Done |
 | 8 | **Utilities web app** (`web/`): JSON formatter and type generator, format converter, regex tester, JWT decoder (static site, nothing leaves the browser) | Done |
-| 9 | **Mermaid in the web app**: live diagrams with syntax errors, SVG and PNG export, Mermaid code from tables, on its own page | In review |
+| 9 | **Mermaid in the web app**: live diagrams with syntax errors, SVG and PNG export, Mermaid code from tables, on its own page | Done |
 | 10 | **AI features**: `engkit ai commit`, `engkit ai pr` (needs `ANTHROPIC_API_KEY`) | Planned |
 | 11 | **The rest**: `engkit mock`, `engkit scaffold` | Planned |
 

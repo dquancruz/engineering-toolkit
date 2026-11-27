@@ -6,6 +6,10 @@
 
 - **web:** add a Mermaid page with live diagrams, SVG and PNG export and code from tables (47bb6eb)
 
+### Fixes
+
+- **web:** draw only allowed Mermaid types and write no invisible characters (7292e81)
+
 ### Security
 
 - **web:** draw only an explicit list of Mermaid diagram types; `eventmodeling`, `venn` and `architecture` are refused, since Mermaid puts their text into the page as HTML
