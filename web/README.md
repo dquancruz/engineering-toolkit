@@ -1,6 +1,6 @@
 # Developer utilities (web)
 
-Four tools that run entirely in the browser, in Spanish and English. A static site, separate from the `engkit` CLI and not included in its npm package.
+Tools that run entirely in the browser, in Spanish and English. A static site, separate from the `engkit` CLI and not included in its npm package. It has two pages: `index.html` with four utilities, and `mermaid.html` with the Mermaid tools, which has its own script, size budget and Content-Security-Policy.
 
 | Tool | What it does |
 |---|---|
@@ -9,7 +9,110 @@ Four tools that run entirely in the browser, in Spanish and English. A static si
 | Regex | JavaScript regular expressions: highlighted matches and groups. Runs in a worker that is stopped after 1.5 s; see [Regex in Safari](#regex-in-safari) |
 | JWT | Header, payload and `iat` / `nbf` / `exp`. **The signature is not verified** |
 
-Language: `?lang=es|en`, then the saved choice, then Spanish.
+On `mermaid.html`:
+
+| Tool | What it does |
+|---|---|
+| Diagram | Draws Mermaid code as you type, shows syntax errors with the line typed and the reason, and downloads SVG and PNG |
+| Table → Mermaid | Flowchart, entity-relationship, Gantt and sequence diagrams from a CSV or Markdown table; see [Tables](#tables) |
+
+Language: `?lang=es|en`, then the saved choice, then Spanish. Moving between the two pages loses what was typed: nothing is stored.
+
+## Mermaid
+
+Mermaid 12.3.0, pinned. Each diagram is drawn with `securityLevel: "strict"`, plain SVG text (`htmlLabels: false`), system fonts and the dagre layout. A diagram cannot change those, nor `themeCSS`, `themeVariables`, fonts or the sanitizer's settings, from its front matter or `%%{init}%%`.
+
+Strict mode is not enough by itself, so the app also:
+
+- draws only the [allowed diagram types](#allowed-diagram-types) and refuses formulas;
+- refuses `img:` pictures with a web address;
+- cleans the SVG: only drawing elements, no links, scripts, animations or references outside the file;
+- shows it as a picture (`<img>`), so nothing in it can be clicked or run.
+
+Errors give the line as typed (Mermaid counts lines after removing front matter, directives and comments). Some errors, such as an invalid Gantt date, come without a line, and the app says so. A very large diagram freezes the page while it is drawn: Mermaid needs the page to measure text and cannot run in a worker. Its limits apply (50 000 characters, 500 edges).
+
+### Allowed diagram types
+
+The rule: **a type is drawn only if Mermaid never puts text of the diagram into the page as HTML while drawing it**. Mermaid needs the page to measure text, so whatever it builds there is live for a moment, before the app cleans the result. The Content-Security-Policy stops scripts and requests, but not navigation: a `<meta http-equiv="refresh">` that reaches the page can take the reader to another address. Any other type is refused before drawing, with the reason (es / en).
+
+| Allowed (id Mermaid detects) | |
+|---|---|
+| Flow and structure | `flowchart-v2`, `flowchart-elk`, `swimlane`, `agentflow`, `block`, `classDiagram`, `stateDiagram`, `er`, `requirement`, `c4`, `usecase` |
+| Time and process | `sequence`, `gantt`, `timeline`, `journey`, `gitGraph`, `kanban` |
+| Data | `pie`, `quadrantChart`, `xychart`, `radar`, `sankey`, `treemap`, `packet` |
+| Others | `mindmap`, `treeView`, `ishikawa`, `wardley`, `cynefin`, `railroad`, `railroadEbnf`, `railroadAbnf`, `railroadPeg`, `info` |
+
+| Refused | Why |
+|---|---|
+| `eventmodeling` | Every label is written as HTML (`.html()`) |
+| `architecture` | The icon text of a service is written as HTML |
+| `venn` | Text nodes are placed in HTML elements inside the drawing (as text, not parsed; refused all the same) |
+
+**Formulas (`$$…$$`) are refused in every type.** In sequence and class diagrams Mermaid writes the text around a formula as HTML, even with `htmlLabels` off. A formula typed as such is refused with its line; one written another way (such as escapes in `@{ … }`) fails when Mermaid calls KaTeX, whose place a stub takes that throws, before any HTML is written.
+
+The list is `src/core/diagram/types.ts`. `test/mermaid-types.test.ts` fails if Mermaid registers a type that is in neither list. `e2e/mermaid-hostile.spec.ts` draws every allowed type, in Chromium, Firefox and WebKit, with a meta refresh, a base address, a link prefetch and image and SVG events in its labels, and checks: no navigation, request, new window or script, and no such element, nor any HTML element holding that text, in the page at any moment. Where a grammar refuses the markup as typed, it is drawn without `:` and `;`. `info` takes no text.
+
+This is a list of what was observed with Mermaid 12.3.0 and these inputs, plus a reading of its code, not a proof: **updating Mermaid means checking it again**.
+
+### What is left out
+
+ELK and KaTeX are replaced by stubs in this build:
+
+| Left out | What you lose | Why |
+|---|---|---|
+| ELK layout (`elkjs`), Mermaid 12's default | Every diagram is placed with dagre: complex flowcharts, class, state and entity-relationship diagrams can look less tidy than in other viewers. `layout: elk` is ignored, with a warning | About 450 KB gzip, and `elkjs` is licensed under EPL-2.0 or GPL-3.0 |
+| KaTeX | `$$…$$` formulas are refused | About 75 KB gzip, and formulas need HTML in the page |
+
+With both, the Mermaid script alone measured 1 425 KB gzip; without them, 897 KB.
+
+### Known limits
+
+- In use case diagrams Mermaid places the label off-centre inside the ellipse with plain text.
+- A downloaded SVG uses the fonts of the computer that opens it.
+
+## Tables
+
+Comma, semicolon, tab or Markdown. Column names in English or Spanish, ignoring case and accents; `*` required.
+
+| Diagram | Columns (English / Spanish) |
+|---|---|
+| Flowchart | `source`* / `origen`, `target`* / `destino`, `label` / `etiqueta` |
+| Entity-relationship: entities | `entity`* / `entidad`, `attribute`* / `atributo`, `type`* / `tipo`, `key` / `clave` (PK, FK, UK), `comment` / `comentario` |
+| Entity-relationship: relations (second table, optional) | `source`* / `origen`, `source_cardinality`* / `cardinalidad_origen`, `target`* / `destino`, `target_cardinality`* / `cardinalidad_destino` (`1`, `0..1`, `0..n`, `1..n`), `label` / `etiqueta` |
+| Gantt | `task`* / `tarea`, `start` / `inicio` (YYYY-MM-DD) or `after` / `despues` (ids), `end` / `fin` or `duration` / `duracion` (`3d`, `2w`, `4h`), `section` / `seccion`, `id`, `status` / `estado` (done, active, crit, milestone) |
+| Sequence | `from`* / `de`, `to`* / `para`, `message`* / `mensaje`, `type` / `tipo` (call, async, reply) |
+
+```csv
+source,target,label
+Start,Validate,
+Validate,Save,"valid, complete"
+```
+
+```csv
+entity,attribute,type,key
+Customer,id,int,PK
+Order,customer_id,int,FK
+```
+
+```csv
+section,task,id,start,duration,after
+Design,Sketch,a1,2026-12-01,3d,
+Design,Review,a2,,2d,a1
+```
+
+```markdown
+| from | to | message |
+|------|----|---------|
+| Web | API | POST /orders |
+```
+
+**Escaping.** Names never become identifiers: nodes, entities and participants get generated ids. **The generated code has no invisible characters**: only visible substitutes, and each changed field is listed with its table, line and column.
+
+- Sequence diagrams use entity codes (`#35;`), so nothing needs replacing there.
+- The other diagrams show entity codes literally, so what would be read as syntax becomes a look-alike. In flowcharts: `"` as `＂`, `<` `>` as `＜` `＞`, `*` `` ` `` `~` `\` and an underscore at the edge of a word (Markdown), and only where they would be read as such `&amp;`, `#35;`, `%%`, `$$` and the `:` of `fa:fa-user`. Entity-relationship names are similar, and attribute names and types must be identifiers: other characters become `_`. In Gantt tasks, `:` becomes `꞉`, and a name that starts with a keyword such as `section` gets a full-width first letter.
+- Control and zero-width characters in a cell (also bidirectional marks, soft hyphens and emoji joiners and variation selectors) are written as their code point, such as `⟨U+200B⟩`, in every diagram. Tabs and line breaks become a space. Some emoji therefore do not survive as typed.
+
+`test/diagram.test.ts` puts every such character in every free-text field and fails if the code has one. `e2e/mermaid.spec.ts` draws hostile texts and compares the drawing with the table.
 
 ## Development
 
@@ -21,16 +124,17 @@ npm ci
 npm run dev                 # no Content-Security-Policy: the dev server needs a WebSocket
 npm run typecheck
 npm test                    # unit tests
-npm run build && npm run test:build     # network scan, policy and size budget
+npm run build && npm run test:build     # network scan, policies and size budgets
 npx playwright install chromium firefox webkit   # once; on Linux add --with-deps (needs sudo)
 npm run test:e2e            # runs against the built site
 ```
 
 ```
-src/core/       conversions, type generators, regex and JWT: pure functions without DOM
-src/ui/         Preact components
+src/core/       conversions, type generators, regex, JWT and diagram code: pure functions without DOM
+src/ui/         Preact components of index.html, and what both pages share
+src/mermaid/    the Mermaid page: drawing, SVG cleaning, export, its components and texts
 src/i18n.ts     Spanish and English texts
-csp.ts          the Content-Security-Policy added to the build
+csp.ts          the Content-Security-Policy of each page
 scripts/network-scan.ts   what the build may not contain, and the reviewed exceptions
 ```
 
@@ -40,14 +144,24 @@ The requirement: nothing typed leaves the browser.
 
 | Layer | Guarantee | Test |
 |---|---|---|
-| Content-Security-Policy | `connect-src 'none'`; only the site's own script and style; workers only from `blob:`; no forms | `e2e/privacy.spec.ts`: every way of connecting fails, from the page and from the worker |
-| Build scan | No network or `eval` code, nor external URLs, outside the reviewed list | `test/build/build.test.ts` |
-| Behaviour | No request after loading, whatever is typed | `e2e/privacy.spec.ts` |
-| No traces | Input is not stored or put in the URL; only the language and theme are saved | `e2e/privacy.spec.ts` |
+| Content-Security-Policy | `connect-src 'none'`; only the site's own script and style (see below for `mermaid.html`); workers only from `blob:`, none on `mermaid.html`; no forms | `e2e/privacy.spec.ts`, `e2e/mermaid-privacy.spec.ts`: every way of connecting fails |
+| Build scan | No network or `eval` code, nor external URLs, outside the reviewed list of each page | `test/build/build.test.ts` |
+| Behaviour | No request after loading, whatever is typed, including diagrams that try to | the same two files |
+| No traces | Input is not stored or put in the URL; only the language and theme are saved | the same two files |
 
-Text fields have spell checking off, since some browsers send the text to an online service to check it. The site is one script and one style sheet, so it keeps working without a connection once loaded.
+Text fields have spell checking off, since some browsers send the text to an online service to check it. Each page is one script and one style sheet, so it keeps working without a connection once loaded.
 
-**Reviewed list.** `scripts/network-scan.ts` explains each exception: which code it is, from which library, why it cannot reach the network and which test shows it. Today there are five: three XML namespace names in Preact and the two ways Vite's loader can start the inline worker. A new finding, or a different number of uses, fails the build tests.
+### The policy of `mermaid.html`
+
+It differs from the other page in `style-src 'self' 'unsafe-inline'` (and allows no worker). Mermaid writes `<style>` elements and style attributes while it draws, from what you type, so hashes cannot list them; a nonce in a static site is public; and neither covers style attributes well. Scripts stay `'self'`, without `unsafe-eval`: `e2e/mermaid-types.spec.ts` draws every diagram type that Mermaid registers under that policy.
+
+**What risk is left:**
+
+- If Mermaid's cleaning failed, CSS could be injected while a diagram is drawn and change how the page looks, for example hiding a warning. Sending data out through CSS stays blocked: no pictures or fonts from other sites are allowed.
+- The policy does not stop navigation, which is why only the [allowed diagram types](#allowed-diagram-types) are drawn, links are removed and the diagram is shown as a picture.
+- A downloaded SVG opened elsewhere no longer has this policy: only the cleaning protects it.
+
+**Reviewed lists.** `scripts/network-scan.ts` explains each exception: which code it is, from which library, why it cannot reach the network and which test shows it. `index.html` has five: three XML namespace names in Preact and the two ways Vite's loader can start the inline worker. `mermaid.html` has 32 web addresses (namespace names and links in error messages), each with its exact number of uses, and eleven pieces of code (parser positions, `window.open` in Mermaid's click handler, picture and link elements, `@import`, and lodash's `Function("return this")` fallback). A new finding, or any different number, fails the build tests: **updating Mermaid means reviewing the list again**.
 
 **Dependency choice.** CSV uses `csv-parse` and `csv-stringify`, not `papaparse`: `papaparse` ships code that downloads files with `XMLHttpRequest` and code that builds functions from text, and the bundler cannot remove them. The cost is about 16 KB more (gzip). `csv-parse` also rejects unclosed quotes and uneven rows.
 
@@ -55,13 +169,17 @@ Text fields have spell checking off, since some browsers send the text to an onl
 
 ## Accessibility
 
-Target: WCAG 2.1 AA. `e2e/accessibility.spec.ts` runs axe on every tool in both themes and checks the keyboard (ARIA tabs, no focus trap, visible focus). Matches are underlined and numbered, not only coloured.
+Target: WCAG 2.1 AA. `e2e/accessibility.spec.ts` and `e2e/mermaid-accessibility.spec.ts` run axe on every tool in both themes and check the keyboard (ARIA tabs, no focus trap, visible focus). Matches are underlined and numbered, not only coloured.
+
+A diagram's text alternative is its `accTitle` and `accDescr`; without them, the rows of the table it came from, or the texts drawn. The same list is under *Text description*. It does not describe the shape of a hand-written diagram: add `accDescr` for that. The diagram is always drawn on white, in both themes, like the exported file.
 
 Automated checks do not cover everything. **Not verified with a screen reader.** Manual review before publishing:
 
 - [ ] With a screen reader: tabs, labels, errors, warnings and the match count are announced and make sense
 - [ ] At 200 % and 400 % zoom nothing is cut off or needs scrolling in two directions, except tables
 - [ ] The whole app can be used with the keyboard in Safari
+- [ ] A diagram's text alternative and its errors are understandable when read aloud
+- [ ] Download SVG and PNG in a real Safari
 - [ ] With forced colours (Windows high contrast) matches and the selected tab can be told apart
 
 ## Conversion limits

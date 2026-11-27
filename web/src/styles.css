@@ -221,3 +221,9 @@ td {
   vertical-align: top;
   overflow-wrap: anywhere;
 }
+a {
+  color: var(--accent);
+}
+.nav span {
+  color: var(--muted);
+}

@@ -60,11 +60,11 @@ The CLI is not published to npm. `dist/` is not versioned, so releases ship a pr
 **Main method: install the tarball from a GitHub Release**
 
 ```bash
-npm i -g https://github.com/dquancruz/engineering-toolkit/releases/download/v0.8.0/engineering-toolkit-0.8.0.tgz
+npm i -g https://github.com/dquancruz/engineering-toolkit/releases/download/v0.9.0/engineering-toolkit-0.9.0.tgz
 engkit --help
 ```
 
-npm may print an `install-scripts` warning about `prepare`; it is harmless because the tarball already contains the built `dist/`. Replace `0.8.0` (in both places) with the version you want. Releases are listed at <https://github.com/dquancruz/engineering-toolkit/releases>. A release is created by pushing a `v*` tag; the workflow in `.github/workflows/release.yml` runs the tests, runs `npm pack` and attaches the `.tgz`. The tag must match the version in `package.json`; see [Release cycle](#release-cycle).
+npm may print an `install-scripts` warning about `prepare`; it is harmless because the tarball already contains the built `dist/`. Replace `0.9.0` (in both places) with the version you want. Releases are listed at <https://github.com/dquancruz/engineering-toolkit/releases>. A release is created by pushing a `v*` tag; the workflow in `.github/workflows/release.yml` runs the tests, runs `npm pack` and attaches the `.tgz`. The tag must match the version in `package.json`; see [Release cycle](#release-cycle).
 
 **Alternative: clone and link** (for development)
 
@@ -343,7 +343,7 @@ Use it in CI:
 - uses: actions/checkout@v7
   with:
     fetch-depth: 0        # full history, needed by adr-immutable and log-append-only
-- run: npm i -g https://github.com/dquancruz/engineering-toolkit/releases/download/v0.8.0/engineering-toolkit-0.8.0.tgz
+- run: npm i -g https://github.com/dquancruz/engineering-toolkit/releases/download/v0.9.0/engineering-toolkit-0.9.0.tgz
 - run: engkit check --strict
 ```
 
@@ -904,7 +904,7 @@ Defaults: name `Oncall Engineer`, sprint `Current Sprint`. Output file: `oncall_
 
 ## 🌐 Web utilities
 
-[`web/`](web/README.md) is a static site with a JSON formatter and type generator, a JSON / YAML / TOML / CSV / XML converter, a regex tester and a JWT decoder. Everything runs in the browser: nothing typed is sent anywhere. It is a separate package, is not part of the `engkit` install, and is not deployed automatically.
+[`web/`](web/README.md) is a static site with a JSON formatter and type generator, a JSON / YAML / TOML / CSV / XML converter, a regex tester, a JWT decoder and, on a second page, Mermaid diagrams (live drawing, SVG and PNG export, and code generated from tables). Everything runs in the browser: nothing typed is sent anywhere. It is a separate package, is not part of the `engkit` install, and is not deployed automatically.
 
 ```bash
 cd web && npm ci && npm run dev
