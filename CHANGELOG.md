@@ -1,5 +1,11 @@
 # Changelog
 
+## [v0.9.0] - 2026-11-27
+
+### Features
+
+- **web:** add a Mermaid page with live diagrams, SVG and PNG export and code from tables (47bb6eb)
+
 ## [v0.8.0] - 2026-11-26
 
 ### Features
