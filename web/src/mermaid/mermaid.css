@@ -1,0 +1,31 @@
+/* The diagram is drawn with Mermaid's light theme, so it sits on white in both themes, like the exported file. */
+.canvas {
+  max-height: 70vh;
+  overflow: auto;
+  padding: 0.75rem;
+  background: #ffffff;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+.canvas img {
+  display: block;
+  height: auto;
+}
+.canvas img.fit {
+  max-width: 100%;
+}
+.source {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.hint {
+  color: var(--muted);
+}
+.outline {
+  max-height: 15rem;
+  overflow: auto;
+  overflow-wrap: anywhere;
+}
+h2 {
+  font-size: 1rem;
+}

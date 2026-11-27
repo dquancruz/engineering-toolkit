@@ -9,10 +9,16 @@ describe("sources", () => {
   const files = (fs.readdirSync(src, { recursive: true }) as string[]).filter((f) => /\.(tsx?|css)$/.test(f));
 
   /**
-   * The one allowed use: RegexTool starts the inline worker (`?worker&inline`). It is the `new Worker` of the
+   * The allowed uses. RegexTool starts the inline worker (`?worker&inline`). It is the `new Worker` of the
    * reviewed list in scripts/network-scan.ts, seen in the source.
    */
-  const allowed: Record<string, string[]> = { "ui/RegexTool.tsx": ["new Worker"] };
+  const allowed: Record<string, string[]> = {
+    "ui/RegexTool.tsx": ["new Worker"],
+    // the PNG is drawn from a data: URL of the diagram (reviewed list of the Mermaid page)
+    "mermaid/export.ts": ["new Image"],
+    // not an import: the pattern that removes it from the diagram's CSS
+    "core/diagram/css.ts": ["@import", "@import"],
+  };
 
   it.each(files)("%s has no network or eval code", (file) => {
     const found = scan(fs.readFileSync(path.join(src, file), "utf-8")).map((f) => f.match);

@@ -2,14 +2,14 @@
   "name": "engineering-toolkit-web",
   "version": "0.8.0",
   "private": true,
-  "description": "Developer utilities that run entirely in the browser: JSON, format converter, regex tester and JWT decoder",
+  "description": "Developer utilities that run entirely in the browser: JSON, format converter, regex tester, JWT decoder and Mermaid diagrams",
   "type": "module",
   "engines": {
     "node": ">=22.12"
   },
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "vite build && vite build --mode mermaid",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "test": "vitest run --project unit",
@@ -20,6 +20,7 @@
     "csv-parse": "^7.0.3",
     "csv-stringify": "^6.9.0",
     "fast-xml-parser": "^5.12.1",
+    "mermaid": "12.3.0",
     "preact": "^11.2.0",
     "smol-toml": "^1.9.1",
     "yaml": "^2.9.1"
