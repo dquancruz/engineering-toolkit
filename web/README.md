@@ -24,26 +24,49 @@ Mermaid 12.3.0, pinned. Each diagram is drawn with `securityLevel: "strict"`, pl
 
 Strict mode is not enough by itself, so the app also:
 
+- draws only the [allowed diagram types](#allowed-diagram-types) and refuses formulas;
 - refuses `img:` pictures with a web address;
 - cleans the SVG: only drawing elements, no links, scripts, animations or references outside the file;
 - shows it as a picture (`<img>`), so nothing in it can be clicked or run.
 
 Errors give the line as typed (Mermaid counts lines after removing front matter, directives and comments). Some errors, such as an invalid Gantt date, come without a line, and the app says so. A very large diagram freezes the page while it is drawn: Mermaid needs the page to measure text and cannot run in a worker. Its limits apply (50 000 characters, 500 edges).
 
+### Allowed diagram types
+
+The rule: **a type is drawn only if Mermaid never puts text of the diagram into the page as HTML while drawing it**. Mermaid needs the page to measure text, so whatever it builds there is live for a moment, before the app cleans the result. The Content-Security-Policy stops scripts and requests, but not navigation: a `<meta http-equiv="refresh">` that reaches the page can take the reader to another address. Any other type is refused before drawing, with the reason (es / en).
+
+| Allowed (id Mermaid detects) | |
+|---|---|
+| Flow and structure | `flowchart-v2`, `flowchart-elk`, `swimlane`, `agentflow`, `block`, `classDiagram`, `stateDiagram`, `er`, `requirement`, `c4`, `usecase` |
+| Time and process | `sequence`, `gantt`, `timeline`, `journey`, `gitGraph`, `kanban` |
+| Data | `pie`, `quadrantChart`, `xychart`, `radar`, `sankey`, `treemap`, `packet` |
+| Others | `mindmap`, `treeView`, `ishikawa`, `wardley`, `cynefin`, `railroad`, `railroadEbnf`, `railroadAbnf`, `railroadPeg`, `info` |
+
+| Refused | Why |
+|---|---|
+| `eventmodeling` | Every label is written as HTML (`.html()`) |
+| `architecture` | The icon text of a service is written as HTML |
+| `venn` | Text nodes are placed in HTML elements inside the drawing (as text, not parsed; refused all the same) |
+
+**Formulas (`$$…$$`) are refused in every type.** In sequence and class diagrams Mermaid writes the text around a formula as HTML, even with `htmlLabels` off. A formula typed as such is refused with its line; one written another way (such as escapes in `@{ … }`) fails when Mermaid calls KaTeX, whose place a stub takes that throws, before any HTML is written.
+
+The list is `src/core/diagram/types.ts`. `test/mermaid-types.test.ts` fails if Mermaid registers a type that is in neither list. `e2e/mermaid-hostile.spec.ts` draws every allowed type, in Chromium, Firefox and WebKit, with a meta refresh, a base address, a link prefetch and image and SVG events in its labels, and checks: no navigation, request, new window or script, and no such element, nor any HTML element holding that text, in the page at any moment. Where a grammar refuses the markup as typed, it is drawn without `:` and `;`. `info` takes no text.
+
+This is a list of what was observed with Mermaid 12.3.0 and these inputs, plus a reading of its code, not a proof: **updating Mermaid means checking it again**.
+
 ### What is left out
 
-To keep the page under its budget, ELK and KaTeX are replaced by stubs in this build:
+ELK and KaTeX are replaced by stubs in this build:
 
 | Left out | What you lose | Why |
 |---|---|---|
 | ELK layout (`elkjs`), Mermaid 12's default | Every diagram is placed with dagre: complex flowcharts, class, state and entity-relationship diagrams can look less tidy than in other viewers. `layout: elk` is ignored, with a warning | About 450 KB gzip, and `elkjs` is licensed under EPL-2.0 or GPL-3.0 |
-| KaTeX | `$$…$$` formulas are shown as text, with a warning | About 75 KB gzip, and formulas need HTML inside the SVG |
+| KaTeX | `$$…$$` formulas are refused | About 75 KB gzip, and formulas need HTML in the page |
 
 With both, the Mermaid script alone measured 1 425 KB gzip; without them, 897 KB.
 
 ### Known limits
 
-- Event modeling writes its labels as HTML (so do text nodes of Venn diagrams and icon texts of architecture diagrams, by Mermaid's code). The app turns them into SVG text, without wrapping, and says so. Only event modeling was drawn in the tests.
 - In use case diagrams Mermaid places the label off-centre inside the ellipse with plain text.
 - A downloaded SVG uses the fonts of the computer that opens it.
 
@@ -83,13 +106,13 @@ Design,Review,a2,,2d,a1
 | Web | API | POST /orders |
 ```
 
-**Escaping.** Names never become identifiers: nodes, entities and participants get generated ids. How a character can be written depends on the diagram:
+**Escaping.** Names never become identifiers: nodes, entities and participants get generated ids. **The generated code has no invisible characters**: only visible substitutes, and each changed field is listed with its table, line and column.
 
-- sequence diagrams use entity codes (`#35;`);
-- flowcharts and entity-relationship diagrams show entity codes literally, so an invisible zero-width space (U+200B) is added after characters that would be read as syntax. **The generated code contains those invisible characters**: searching it for the exact text may not match;
-- what cannot be written either way becomes a look-alike (for example `"` as `＂` in flowcharts, `:` as `꞉` in Gantt tasks) and the app lists each replacement with its line. In flowcharts this includes `>`. Attribute names and types of entities must be identifiers: other characters become `_`.
+- Sequence diagrams use entity codes (`#35;`), so nothing needs replacing there.
+- The other diagrams show entity codes literally, so what would be read as syntax becomes a look-alike. In flowcharts: `"` as `＂`, `<` `>` as `＜` `＞`, `*` `` ` `` `~` `\` and an underscore at the edge of a word (Markdown), and only where they would be read as such `&amp;`, `#35;`, `%%`, `$$` and the `:` of `fa:fa-user`. Entity-relationship names are similar, and attribute names and types must be identifiers: other characters become `_`. In Gantt tasks, `:` becomes `꞉`, and a name that starts with a keyword such as `section` gets a full-width first letter.
+- Control and zero-width characters in a cell (also bidirectional marks, soft hyphens and emoji joiners and variation selectors) are written as their code point, such as `⟨U+200B⟩`, in every diagram. Tabs and line breaks become a space. Some emoji therefore do not survive as typed.
 
-`e2e/mermaid.spec.ts` draws hostile texts with every free-text field and compares the drawing with the table.
+`test/diagram.test.ts` puts every such character in every free-text field and fails if the code has one. `e2e/mermaid.spec.ts` draws hostile texts and compares the drawing with the table.
 
 ## Development
 
@@ -135,8 +158,7 @@ It differs from the other page in `style-src 'self' 'unsafe-inline'` (and allows
 **What risk is left:**
 
 - If Mermaid's cleaning failed, CSS could be injected while a diagram is drawn and change how the page looks, for example hiding a warning. Sending data out through CSS stays blocked: no pictures or fonts from other sites are allowed.
-- Some diagram types put your text into the page as HTML while drawing. The policy is what stops a script or a picture there.
-- The policy does not stop navigation, which is why links are removed and the diagram is shown as a picture.
+- The policy does not stop navigation, which is why only the [allowed diagram types](#allowed-diagram-types) are drawn, links are removed and the diagram is shown as a picture.
 - A downloaded SVG opened elsewhere no longer has this policy: only the cleaning protects it.
 
 **Reviewed lists.** `scripts/network-scan.ts` explains each exception: which code it is, from which library, why it cannot reach the network and which test shows it. `index.html` has five: three XML namespace names in Preact and the two ways Vite's loader can start the inline worker. `mermaid.html` has 32 web addresses (namespace names and links in error messages), each with its exact number of uses, and eleven pieces of code (parser positions, `window.open` in Mermaid's click handler, picture and link elements, `@import`, and lodash's `Function("return this")` fallback). A new finding, or any different number, fails the build tests: **updating Mermaid means reviewing the list again**.

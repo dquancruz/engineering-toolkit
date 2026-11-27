@@ -75,6 +75,7 @@ for (const [name, code, message] of [
   ["a date without a line", "gantt\n  dateFormat YYYY-MM-DD\n  T :a, 2026-99-99, 3d", "A date is not valid"],
   ["too long", `flowchart LR\n  A["${"x".repeat(50_001)}"]`, "longer than 50 000"],
   ["too many edges", `flowchart LR\n${"  A --> B\n".repeat(501)}`, "too many edges"],
+  ["a formula", 'flowchart LR\n  A["$$x^2$$"]', "Formulas ($$…$$) are not accepted"],
   ["a web picture", 'flowchart LR\n  A@{ img: "https://blocked.invalid/a.png" }', "External images"],
 ] as const) {
   test(`explains ${name}`, async ({ page }) => {
@@ -88,9 +89,8 @@ for (const [name, code, message] of [
 
 test("says what the build does not include", async ({ page }) => {
   await openMermaid(page);
-  await draw(page, '---\nconfig:\n  layout: elk\n---\nflowchart LR\n  A["$$x^2$$"] --> B');
+  await draw(page, "---\nconfig:\n  layout: elk\n---\nflowchart LR\n  A --> B");
   await expect(panel(page)).toContainText("The ELK layout is not included");
-  await expect(panel(page)).toContainText("Formulas are not included");
   await expect(diagram(page)).toBeVisible();
 });
 
@@ -157,7 +157,7 @@ test("uses the diagram's own description as the text alternative", async ({ page
 /** The text of the drawing without spaces: Mermaid splits words and lines into separate elements. */
 const drawn = async (page: Page) =>
   page.evaluate(
-    (svg) => [...new DOMParser().parseFromString(svg, "image/svg+xml").querySelectorAll("text")].map((t) => t.textContent).join("").replace(/[\s​]+/g, ""),
+    (svg) => [...new DOMParser().parseFromString(svg, "image/svg+xml").querySelectorAll("text")].map((t) => t.textContent).join("").replace(/\s+/g, ""),
     await shownSvg(page)
   );
 const squash = (text: string) => text.replace(/\s+/g, "");
@@ -176,6 +176,9 @@ const HOSTILE = [
   "back\\nslash \\",
   "end",
   "section title click",
+  "[a](b) [c][d] [e]: f",
+  "R&D #4 50% $5 a_b *x*",
+  "a\u200Bb\u0007c\u202Ed",
   "Ñandú café 你好",
 ];
 const csv = (rows: string[][]) => rows.map((r) => r.map((c) => `"${c.replaceAll('"', '""')}"`).join(",")).join("\n");
@@ -249,7 +252,7 @@ test("table errors name the line and the column, and replacements are listed", a
   await panel(page).getByRole("combobox", { name: "Diagram type" }).selectOption("gantt");
   await panel(page).getByRole("textbox", { name: "Table (CSV or Markdown)" }).fill("task,start,duration\nFix: login,2026-01-01,1d");
   await panel(page).getByRole("button", { name: "Generate code" }).click();
-  await expect(panel(page)).toContainText("line 2: “Fix: login” is written “Fix꞉ login”");
+  await expect(panel(page)).toContainText("line 2, column “task”: “Fix: login” is written “Fix꞉ login”");
 });
 
 test("the main page links here, and back", async ({ page }) => {

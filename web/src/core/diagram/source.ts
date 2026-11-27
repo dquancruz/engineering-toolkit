@@ -3,7 +3,7 @@
 /** Mermaid's own default limit: above it, it draws an error picture instead of failing. */
 export const MAX_TEXT = 50_000;
 
-export type ProblemCode = "empty" | "too-long" | "external-image" | "unknown-type" | "syntax" | "invalid-date" | "too-many-edges" | "render";
+export type ProblemCode = "empty" | "too-long" | "external-image" | "refused-type" | "formula" | "unknown-type" | "syntax" | "invalid-date" | "too-many-edges" | "render";
 
 export interface Problem {
   code: ProblemCode;
@@ -15,7 +15,14 @@ export interface Problem {
   detail?: string;
 }
 
-export type DiagramNotice = "no-elk" | "no-math" | "links-removed" | "html-converted" | "external-removed" | "png-scaled";
+export type DiagramNotice = "no-elk" | "links-removed" | "external-removed" | "png-scaled";
+
+/**
+ * Mermaid puts the whole text around a formula into the page as HTML, so formulas are refused. This is the
+ * message of the stub that takes KaTeX's place, for a formula that check() cannot see in the code, such as
+ * one written with escapes.
+ */
+export const FORMULA_REFUSED = "Formulas are refused";
 
 /**
  * The text Mermaid parses is not the text typed: it removes the front matter, the `%%{…}%%` directives, the
@@ -75,6 +82,7 @@ function reportedLine(error: ParserError): number | undefined {
 export function toProblem(error: unknown, text: string): Problem {
   const e = (typeof error === "object" && error !== null ? error : { message: String(error) }) as ParserError;
   const detail = (e.message ?? String(error)).slice(0, 600);
+  if (detail.includes(FORMULA_REFUSED)) return { code: "formula" };
   const code: ProblemCode = /No diagram type detected/i.test(detail)
     ? "unknown-type"
     : /Invalid date/i.test(detail)
@@ -100,6 +108,9 @@ export function toProblem(error: unknown, text: string): Problem {
 // the bounded repetition keeps this fast on a long text full of "@{"
 const IMAGE = /@\{[^}]{0,2000}?["']?\bimg\b["']?\s*:\s*(?!\s|["']?data:image\/)/;
 
+/** Mermaid's own pattern for a formula. */
+const FORMULA = /\$\$.*?\$\$/;
+
 export function check(text: string): Problem | null {
   if (text.trim() === "") return { code: "empty" };
   if (text.length > MAX_TEXT) return { code: "too-long" };
@@ -108,6 +119,8 @@ export function check(text: string): Problem | null {
     const line = text.slice(0, image.index + image[0].length).split("\n").length;
     return { code: "external-image", line, source: text.split("\n")[line - 1] ?? "" };
   }
+  const formula = text.split(/\r\n?|\n/).findIndex((line) => FORMULA.test(line));
+  if (formula !== -1) return { code: "formula", line: formula + 1, source: text.split(/\r\n?|\n/)[formula]! };
   return null;
 }
 
@@ -115,6 +128,5 @@ export function check(text: string): Problem | null {
 export function unsupported(text: string): DiagramNotice[] {
   const notices: DiagramNotice[] = [];
   if (/^\s*flowchart-elk\b|\b(?:layout|defaultRenderer)["']?\s*:\s*["']?elk/m.test(text)) notices.push("no-elk");
-  if (/\$\$[^\n]*?\$\$/.test(text)) notices.push("no-math");
   return notices;
 }

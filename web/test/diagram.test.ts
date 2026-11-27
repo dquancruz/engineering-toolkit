@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { cleanCss } from "../src/core/diagram/css.js";
 import { EXAMPLES, KINDS, generate, type TableInput } from "../src/core/diagram/generate.js";
 import { MAX_AREA, MAX_SIDE, pngSize } from "../src/core/diagram/png.js";
-import { MAX_TEXT, check, parsedLines, toProblem, unsupported } from "../src/core/diagram/source.js";
+import { FORMULA_REFUSED, MAX_TEXT, check, parsedLines, toProblem, unsupported } from "../src/core/diagram/source.js";
 import { TableError, detectDelimiter, readTable } from "../src/core/diagram/table.js";
 import { LANGS } from "../src/i18n.js";
 import { MERMAID_MESSAGES } from "../src/mermaid/i18n.js";
@@ -98,12 +98,63 @@ describe("generating code", () => {
 
   it("reports what it cannot write as it is", () => {
     expect(generate({ kind: "flowchart", text: 'source,target\n"say ""x""",a>b' }).replaced).toEqual([
-      { line: 2, from: 'say "x"', to: "say \uFF02x\uFF02" },
-      { line: 2, from: "a>b", to: "a\uFF1Eb" },
+      { table: "main", line: 2, column: "source", from: 'say "x"', to: "say \uFF02x\uFF02" },
+      { table: "main", line: 2, column: "target", from: "a>b", to: "a\uFF1Eb" },
     ]);
     expect(generate({ kind: "er", text: "entity,attribute,type\nclient,full name,var char" }).replaced.map((r) => r.to)).toEqual(["var_char", "full_name"]);
     // an underscore inside a word stays
     expect(generate({ kind: "er", text: "entity,attribute,type\norder_item,id,int" }).replaced).toEqual([]);
+  });
+
+  // every control and zero-width character, and the others that take no room
+  const unseen = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}\p{Default_Ignorable_Code_Point}]/u;
+  const every: string[] = [];
+  for (let c = 0; c <= 0x10ffff; c++) if (unseen.test(String.fromCodePoint(c))) every.push(String.fromCodePoint(c));
+
+  /** One table of each kind with `text` in every field that takes free text. */
+  const tables = (text: string): TableInput[] => {
+    const q = (value: string) => `"${value.replaceAll('"', '""')}"`;
+    const row = (...cells: string[]) => cells.map(q).join(",");
+    return [
+      { kind: "flowchart", text: `source,target,label\n${row(`a${text}b`, text + "c", `d${text}`)}` },
+      { kind: "sequence", text: `from,to,message\n${row(`a${text}b`, text + "c", `d${text}`)}` },
+      { kind: "gantt", text: `section,task,start,duration\n${row(`a${text}b`, `section ${text}`, "2026-01-01", "1d")}\n${row("", `${text}c`, "2026-01-01", "1d")}` },
+      {
+        kind: "er",
+        text: `entity,attribute,type,comment\n${row(`a${text}b`, `c${text}`, `d${text}`, `e${text}f`)}`,
+        relations: `source,source_cardinality,target,target_cardinality,label\n${row(`${text}g`, "1", `h${text}`, "1", `i${text}j`)}`,
+      },
+    ];
+  };
+
+  it("never writes a control or zero-width character, whatever the cells have", () => {
+    expect(every.length).toBeGreaterThan(4000);
+    const syntax = ['<b> &amp; #35; %%{x}%% $$y$$ fa:fa-user `*_z_*` ~s~ \\n [a](b) "q" ; :', "section title", "click", "`start"];
+    const chunks = Array.from({ length: Math.ceil(every.length / 500) }, (_, i) => every.slice(i * 500, (i + 1) * 500).join("x"));
+    for (const text of [...chunks, ...syntax, ...syntax.map((s) => `\u200B${s}\u0007`)]) {
+      for (const input of tables(text)) {
+        const { code } = generate(input);
+        // the line breaks between statements are the only ones
+        expect(code.replaceAll("\n", "").match(unseen)?.[0].codePointAt(0), `${input.kind}`).toBeUndefined();
+      }
+    }
+    for (const lang of LANGS) for (const kind of KINDS) expect(generate({ kind, ...EXAMPLES[lang][kind] }).code.replaceAll("\n", "")).not.toMatch(unseen);
+  });
+
+  it("writes an invisible character as its code point, and says in which field", () => {
+    const { code, replaced } = generate({ kind: "sequence", text: "from,to,message\nA\u200BB,C,x\u0007y" });
+    expect(code).toContain("A\u27E8U+200B\u27E9B");
+    expect(replaced.map((r) => [r.line, r.column, r.to])).toEqual([
+      [2, "message", "x\u27E8U+0007\u27E9y"],
+      [2, "from", "A\u27E8U+200B\u27E9B"],
+    ]);
+  });
+
+  it("replaces only what would be read as syntax", () => {
+    const plain = "R&D, issue #4, 50% of $5: a_b [x]";
+    expect(generate({ kind: "flowchart", text: `source,target\n"${plain}",b` }).replaced).toEqual([]);
+    expect(generate({ kind: "flowchart", text: "source,target\n&amp; #35; %% $$,b" }).replaced[0]!.to).toBe("\uFF06amp\uFF1B".replace("\uFF1B", ";") + " \uFF0335; \uFF05\uFF05 \uFF04\uFF04");
+    expect(generate({ kind: "gantt", text: "task,start,duration\nsection one,2026-01-01,1d" }).replaced.map((r) => r.to)).toEqual(["\uFF53ection one"]);
   });
 
   it("never writes a line break or a directive from a cell", () => {
@@ -182,10 +233,15 @@ describe("checks before drawing", () => {
     expect(check("x".repeat(MAX_TEXT + 1))).toEqual({ code: "too-long" });
   });
 
-  it("notices ELK and formulas", () => {
+  it("refuses a formula, and says where", () => {
+    expect(check("sequenceDiagram\n  A->>B: $$x$$ <img src=y>")).toMatchObject({ code: "formula", line: 2 });
+    expect(check("flowchart LR\n  A[$5 and $$]")).toBeNull();
+    expect(toProblem(new Error(FORMULA_REFUSED), "x")).toEqual({ code: "formula" });
+  });
+
+  it("notices ELK", () => {
     expect(unsupported("flowchart-elk LR")).toEqual(["no-elk"]);
     expect(unsupported('%%{init: {"flowchart": {"defaultRenderer": "elk"}}}%%')).toEqual(["no-elk"]);
-    expect(unsupported("flowchart LR\n A[$$x$$]")).toEqual(["no-math"]);
     expect(unsupported("flowchart LR\n A[elk] --> B[$5]")).toEqual([]);
   });
 });

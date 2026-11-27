@@ -138,6 +138,8 @@ const normalize = (name: string) =>
 export interface Record_<K extends string> {
   line: number;
   get: (column: K) => string;
+  /** The name of the column as the table writes it. */
+  header: (column: K) => string;
 }
 
 /** Matches the header against the expected columns and returns one record per row. */
@@ -162,6 +164,7 @@ export function columns<K extends string>(table: Table, specs: Record<K, ColumnS
     for (const key of keys) {
       if (specs[key].required && get(key) === "") throw new TableError("required", { line: row.line, column: table.header[at.get(key)!]! });
     }
-    return { line: row.line, get };
+    const header = (column: K) => table.header[at.get(column) ?? -1] ?? "";
+    return { line: row.line, get, header };
   });
 }

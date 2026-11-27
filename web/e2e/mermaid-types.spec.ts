@@ -1,9 +1,26 @@
 /** Every diagram type, drawn under the policy of the built page: no unsafe-eval. */
 import { expect, test } from "@playwright/test";
 import { diagram, draw, openMermaid, panel, shownSvg, watchPolicy } from "./helpers.js";
+import { REFUSED_TYPES } from "../src/core/diagram/types.js";
 import { SAMPLES } from "./samples.js";
 
-for (const [type, code] of Object.entries(SAMPLES)) {
+for (const type of REFUSED_TYPES) {
+  test(`refuses ${type} and says why`, async ({ page }) => {
+    await openMermaid(page);
+    await draw(page, SAMPLES[type]!);
+    await expect(panel(page).getByRole("alert")).toContainText("This diagram type is not accepted");
+    await expect(panel(page).getByRole("alert")).toContainText("as HTML");
+    await expect(diagram(page)).toHaveCount(0);
+    // also with a mistake in it, and in Spanish
+    await draw(page, `${SAMPLES[type]}\n  ][`);
+    await expect(panel(page).getByRole("alert")).toContainText("This diagram type is not accepted");
+    await openMermaid(page, "?lang=es");
+    await page.getByRole("tabpanel").getByRole("textbox").first().fill(SAMPLES[type]!);
+    await expect(panel(page).getByRole("alert")).toContainText("Este tipo de diagrama no se admite");
+  });
+}
+
+for (const [type, code] of Object.entries(SAMPLES).filter(([type]) => !REFUSED_TYPES.includes(type))) {
   test(`draws ${type} under the real policy`, async ({ page }) => {
     const violations = await watchPolicy(page);
     const errors: string[] = [];
@@ -21,10 +38,6 @@ for (const [type, code] of Object.entries(SAMPLES)) {
     expect(svg).not.toMatch(/<foreignObject|<script|<a[\s>]|@import/);
     // nothing had to be removed from it
     await expect(panel(page).locator(".warning li").filter({ hasText: /removed/ })).toHaveCount(0);
-    // only event modeling writes its labels as HTML: they are turned into SVG text, and still there
-    await expect(panel(page).locator(".warning li").filter({ hasText: "HTML labels" })).toHaveCount(type === "eventmodeling" ? 1 : 0);
-    if (type === "eventmodeling") for (const label of ["CartUI", "AddItem", "ItemAdded"]) expect(svg).toContain(label);
-
     // and it can be turned into a PNG
     const download = page.waitForEvent("download");
     await panel(page).getByRole("button", { name: "Download PNG" }).click();

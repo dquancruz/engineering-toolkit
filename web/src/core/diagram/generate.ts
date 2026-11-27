@@ -3,11 +3,12 @@
  * ids and the text goes where Mermaid reads it as text. How a character can be written depends on the diagram,
  * because Mermaid draws SVG text (see e2e/mermaid.spec.ts, which draws every rule):
  * - sequence diagrams decode entity codes, such as `#35;`;
- * - flowcharts and entity-relationship diagrams do not: an invisible zero-width space (U+200B) after a character
- *   stops it from being read as markup, an entity, a directive or a formula;
- * - what cannot be written either way becomes a look-alike character, and is reported.
+ * - the others do not: what would be read as syntax, markup, an entity, a directive, Markdown or a formula
+ *   becomes a look-alike character, and is reported.
+ * The code never has invisible characters: control and zero-width characters of a cell are written as their
+ * code point, such as `\u27E8U+200B\u27E9`, and reported.
  */
-import { TableError, columns, readTable, type TableDelimiter } from "./table.js";
+import { TableError, columns, readTable, type Record_, type TableDelimiter } from "./table.js";
 
 export const KINDS = ["flowchart", "er", "gantt", "sequence"] as const;
 export type Kind = (typeof KINDS)[number];
@@ -16,7 +17,9 @@ export const DIRECTIONS = ["LR", "TD", "RL", "BT"] as const;
 export type Direction = (typeof DIRECTIONS)[number];
 
 export interface Replacement {
+  table: "main" | "relations";
   line: number;
+  column: string;
   from: string;
   to: string;
 }
@@ -38,48 +41,70 @@ export interface TableInput {
   direction?: Direction;
 }
 
-/** Control characters and line breaks inside a cell become one space. */
-const oneLine = (text: string) => text.replace(/[\u0000-\u001f\u007f\u2028\u2029]+/g, " ").trim();
+/** Tabs and line breaks inside a cell become one space. */
+const oneLine = (text: string) => text.replace(/[\t\n\v\f\r\u0085\u2028\u2029]+/g, " ").trim();
 
-/** An invisible character after each of `characters` breaks the sequence Mermaid would read as syntax. */
-const separate = (text: string, characters: RegExp) => text.replace(characters, "$&\u200B");
+/** Characters that cannot be seen: controls, format characters and everything that takes no width. */
+export const INVISIBLE = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}\p{Default_Ignorable_Code_Point}]/gu;
 
-const sequenceText = (text: string) => oneLine(text).replace(/["#<>&%;:\\$]/g, (c) => (c === '"' ? "#quot;" : c === "<" ? "#lt;" : c === ">" ? "#gt;" : `#${c.codePointAt(0)};`));
+const codePoint = (character: string) => `\u27E8U+${character.codePointAt(0)!.toString(16).toUpperCase().padStart(4, "0")}\u27E9`;
 
-const LOOKALIKES: Record<string, string> = { '"': "\uFF02", "#": "\uFF03", ";": "\uFF1B", ":": "\uA789", "%": "\uFF05", "<": "\uFF1C", ">": "\uFF1E", "*": "\u2217", "`": "\uFF40", "~": "\u223C", "\\": "\uFF3C" };
+/** The text of a cell as one line in which every character can be seen. */
+const visible = (text: string) => oneLine(text).replace(INVISIBLE, codePoint);
+
+const LOOKALIKES: Record<string, string> = { '"': "＂", "#": "＃", $: "＄", "%": "％", "&": "＆", "*": "∗", ":": "꞉", ";": "；", "<": "＜", ">": "＞", "\\": "＼", "]": "］", _: "＿", "`": "｀", "~": "∼" };
+
+/** Every character of what was found, as its look-alike. */
+const lookalike = (found: string) => [...found].map((c) => LOOKALIKES[c] ?? "_").join("");
+
+/** Where a text comes from, to say which field was changed. */
+interface Field {
+  table: Replacement["table"];
+  line: number;
+  column: string;
+}
+
+const field = <K extends string>(row: Record_<K>, column: K, table: Field["table"] = "main"): Field => ({ table, line: row.line, column: row.header(column) });
 
 class Writer {
   readonly replaced: Replacement[] = [];
-  swap(line: number, text: string, characters: RegExp): string {
-    const plain = oneLine(text);
-    return this.note(line, plain, plain.replace(characters, (found) => LOOKALIKES[found] ?? (found.startsWith("_") ? "\uFF3F".repeat(found.length) : "_")));
+  /** The text of a field, with what `characters` finds written as look-alikes. */
+  swap(at: Field, text: string, characters: RegExp): string {
+    return this.note(at, text, visible(text).replace(characters, lookalike));
   }
-  note(line: number, from: string, to: string): string {
-    if (from !== to && !this.replaced.some((r) => r.line === line && r.from === from)) this.replaced.push({ line, from, to });
+  note(at: Field, text: string, to: string): string {
+    const from = oneLine(text);
+    if (from !== to && !this.replaced.some((r) => r.table === at.table && r.line === at.line && r.column === at.column && r.from === from)) this.replaced.push({ ...at, from, to });
     return to;
   }
 }
 
-/** A text of a flowchart. A backtick at the start would make it Markdown. */
-function flowText(writer: Writer, line: number, text: string): string {
-  const safe = separate(writer.swap(line, text, /[">]/g), /[<&#%*_~\\`$:]/g);
-  return safe.startsWith("`") ? `\u200B${safe}` : safe;
-}
+/** Entity codes are visible text, so a sequence diagram needs no look-alikes. */
+const sequenceText = (writer: Writer, at: Field, text: string) =>
+  writer.swap(at, text, /(?!)/g).replace(/["#<>&%;:\\$]/g, (c) => (c === '"' ? "#quot;" : c === "<" ? "#lt;" : c === ">" ? "#gt;" : `#${c.codePointAt(0)};`));
 
 /**
- * A name, comment or label of an entity-relationship diagram. Its grammar refuses `"`, `%` and `\`; `*`,
- * backticks and an underscore at the edge of a word are Markdown, and `~x~` becomes `<x>`.
+ * A text of a flowchart: quotes and angle brackets; Markdown (`*`, backticks, `~`, an underscore at the edge of
+ * a word) and backslash escapes; and, only where they would be read as such, entities (`&x;`, `#35;`),
+ * directives (`%%`), formulas (`$$`) and icons (`fa:fa-user`).
  */
-const erText = (writer: Writer, line: number, text: string) =>
-  separate(writer.swap(line, text, /["%\\`*~]|(?<![\p{L}\p{N}_])_+|_+(?![\p{L}\p{N}_])/gu), /[<&#\]$]/g);
+const FLOW = /["<>*`~\\]|(?<![\p{L}\p{N}_])_+|_+(?![\p{L}\p{N}_])|&(?=#?\w+;)|#(?=\w+;)|%{2,}|\${2,}|(?<=fa[a-z]?):(?=fa-)/gu;
+const flowText = (writer: Writer, at: Field, text: string) => writer.swap(at, text, FLOW);
+
+/**
+ * A name, comment or label of an entity-relationship diagram. Its grammar refuses `"`, `%` and `\`; the rest is
+ * as in a flowchart, and a `]` that would make a Markdown link.
+ */
+const ER = /["%\\<*`~]|(?<![\p{L}\p{N}_])_+|_+(?![\p{L}\p{N}_])|&(?=#?\w+;)|#(?=\w+;)|\${2,}|\](?=[([:])/gu;
+const erText = (writer: Writer, at: Field, text: string) => writer.swap(at, text, ER);
 
 /** Gives every distinct name a generated id, in order of appearance. */
 function ids(prefix: string) {
-  const known = new Map<string, { id: string; line: number }>();
+  const known = new Map<string, { id: string; at: Field }>();
   return {
-    of(name: string, line: number): string {
+    of(name: string, at: Field): string {
       let entry = known.get(name);
-      if (!entry) known.set(name, (entry = { id: `${prefix}${known.size + 1}`, line }));
+      if (!entry) known.set(name, (entry = { id: `${prefix}${known.size + 1}`, at }));
       return entry.id;
     },
     entries: () => [...known].map(([name, entry]) => ({ name, ...entry })),
@@ -96,13 +121,13 @@ function flowchart(input: TableInput): Generated {
   const writer = new Writer();
   const outline: string[] = [];
   const edges = rows.map((row) => {
-    const from = nodes.of(row.get("from"), row.line);
-    const to = nodes.of(row.get("to"), row.line);
+    const from = nodes.of(row.get("from"), field(row, "from"));
+    const to = nodes.of(row.get("to"), field(row, "to"));
     const label = row.get("label");
     outline.push(`${oneLine(row.get("from"))} → ${oneLine(row.get("to"))}${label ? ` (${oneLine(label)})` : ""}`);
-    return `  ${from} -->${label ? `|"${flowText(writer, row.line, label)}"|` : ""} ${to}`;
+    return `  ${from} -->${label ? `|"${flowText(writer, field(row, "label"), label)}"|` : ""} ${to}`;
   });
-  const declarations = nodes.entries().map((n) => `  ${n.id}["${flowText(writer, n.line, n.name)}"]`);
+  const declarations = nodes.entries().map((n) => `  ${n.id}["${flowText(writer, n.at, n.name)}"]`);
   return { code: [`flowchart ${input.direction ?? "LR"}`, ...declarations, ...edges].join("\n"), replaced: writer.replaced, outline };
 }
 
@@ -115,17 +140,18 @@ function sequence(input: TableInput): Generated {
   });
   const arrows: Record<string, string> = { "": "->>", llamada: "->>", call: "->>", async: "-)", asincrono: "-)", "asíncrono": "-)", respuesta: "-->>", reply: "-->>" };
   const people = ids("p");
+  const writer = new Writer();
   const outline: string[] = [];
   const messages = rows.map((row) => {
     const type = row.get("type").toLowerCase();
     if (!Object.hasOwn(arrows, type)) throw new TableError("message-type", { line: row.line, value: row.get("type") });
-    const from = people.of(row.get("from"), row.line);
-    const to = people.of(row.get("to"), row.line);
+    const from = people.of(row.get("from"), field(row, "from"));
+    const to = people.of(row.get("to"), field(row, "to"));
     outline.push(`${oneLine(row.get("from"))} → ${oneLine(row.get("to"))}: ${oneLine(row.get("message"))}`);
-    return `  ${from}${arrows[type]}${to}: ${sequenceText(row.get("message"))}`;
+    return `  ${from}${arrows[type]}${to}: ${sequenceText(writer, field(row, "message"), row.get("message"))}`;
   });
-  const declarations = people.entries().map((p) => `  participant ${p.id} as ${sequenceText(p.name)}`);
-  return { code: ["sequenceDiagram", ...declarations, ...messages].join("\n"), replaced: [], outline };
+  const declarations = people.entries().map((p) => `  participant ${p.id} as ${sequenceText(writer, p.at, p.name)}`);
+  return { code: ["sequenceDiagram", ...declarations, ...messages].join("\n"), replaced: writer.replaced, outline };
 }
 
 function isDate(text: string): boolean {
@@ -150,10 +176,11 @@ function gantt(input: TableInput): Generated {
     status: { names: ["estado", "status"] },
   });
   const writer = new Writer();
-  const text = (line: number, value: string) => {
-    const swapped = writer.swap(line, value, /[:#;%<>\\]/g);
-    // a zero-width space stops the grammar from reading the name as a keyword
-    return GANTT_KEYWORD.test(swapped) ? `\u200B${swapped}` : swapped;
+  const text = (at: Field, value: string) => {
+    const swapped = visible(value).replace(/[:#;%<>\\]|\${2,}/g, lookalike);
+    // the grammar would read the name as a keyword: its first letter becomes the full-width one
+    const safe = GANTT_KEYWORD.test(swapped) ? String.fromCodePoint(swapped.codePointAt(0)! + 0xfee0) + swapped.slice(1) : swapped;
+    return writer.note(at, value, safe);
   };
 
   const own = new Set<string>();
@@ -194,7 +221,7 @@ function gantt(input: TableInput): Generated {
     const from = start !== "" ? start : `after ${after.join(" ")}`;
     const length = end || duration || "0d";
     const section = row.get("section");
-    const task = text(row.line, row.get("task"));
+    const task = text(field(row, "task"), row.get("task"));
     const lines = sections.get(section) ?? [];
     sections.set(section, lines);
     lines.push(`  ${task} :${[...tags, id, from, length].join(", ")}`);
@@ -203,7 +230,7 @@ function gantt(input: TableInput): Generated {
   // tasks without a section go first: after a `section` line they would belong to it
   const body = [...sections]
     .sort(([a], [b]) => Number(a !== "") - Number(b !== ""))
-    .flatMap(([name, lines]) => (name === "" ? lines : [`  section ${text(rows.find((r) => r.get("section") === name)!.line, name)}`, ...lines]));
+    .flatMap(([name, lines]) => (name === "" ? lines : [`  section ${text(field(rows.find((r) => r.get("section") === name)!, "section"), name)}`, ...lines]));
   return { code: ["gantt", "  dateFormat YYYY-MM-DD", ...body].join("\n"), replaced: writer.replaced, outline };
 }
 
@@ -215,11 +242,11 @@ const CARDINALITY: Record<string, { left: string; right: string }> = {
 };
 
 /** Attribute names and types must be identifiers: anything else becomes `_`. */
-function identifier(writer: Writer, line: number, value: string): string {
-  const plain = oneLine(value);
+function identifier(writer: Writer, at: Field, value: string): string {
+  const plain = visible(value);
   let safe = plain.replace(/[^A-Za-z0-9_\-[\]()*\u00C0-\u024F]/g, "_");
   if (!/^[A-Za-z_*\u00C0-\u024F]/.test(safe)) safe = `_${safe}`;
-  return writer.note(line, plain, safe);
+  return writer.note(at, value, safe);
 }
 
 function er(input: TableInput): Generated {
@@ -235,14 +262,14 @@ function er(input: TableInput): Generated {
     comment: { names: ["comentario", "comment"] },
   });
   for (const row of rows) {
-    const id = entities_.of(row.get("entity"), row.line);
+    const id = entities_.of(row.get("entity"), field(row, "entity"));
     const keys = row.get("key").toUpperCase().split(/[\s,]+/).filter(Boolean);
     const bad = keys.find((k) => !["PK", "FK", "UK"].includes(k));
     if (bad !== undefined) throw new TableError("key", { line: row.line, value: bad });
     const comment = row.get("comment");
-    const parts = [identifier(writer, row.line, row.get("type")), identifier(writer, row.line, row.get("attribute"))];
+    const parts = [identifier(writer, field(row, "type"), row.get("type")), identifier(writer, field(row, "attribute"), row.get("attribute"))];
     if (keys.length > 0) parts.push(keys.join(", "));
-    if (comment !== "") parts.push(`"${erText(writer, row.line, comment)}"`);
+    if (comment !== "") parts.push(`"${erText(writer, field(row, "comment"), comment)}"`);
     (attributes.get(id) ?? attributes.set(id, []).get(id)!).push(`    ${parts.join(" ")}`);
     outline.push(`${oneLine(row.get("entity"))}.${oneLine(row.get("attribute"))}: ${oneLine(row.get("type"))}${keys.length ? ` (${keys.join(", ")})` : ""}`);
   }
@@ -266,9 +293,9 @@ function er(input: TableInput): Generated {
         const left = side("fromCardinality");
         const right = side("toCardinality");
         const label = row.get("label");
-        const from = entities_.of(row.get("from"), row.line);
-        const to = entities_.of(row.get("to"), row.line);
-        relations.push(`  ${from} ${left.symbols.left}--${right.symbols.right} ${to} : "${label ? erText(writer, row.line, label) : ""}"`);
+        const from = entities_.of(row.get("from"), field(row, "from", "relations"));
+        const to = entities_.of(row.get("to"), field(row, "to", "relations"));
+        relations.push(`  ${from} ${left.symbols.left}--${right.symbols.right} ${to} : "${label ? erText(writer, field(row, "label", "relations"), label) : ""}"`);
         outline.push(`${oneLine(row.get("from"))} (${left.value}) — ${oneLine(row.get("to"))} (${right.value})${label ? `: ${oneLine(label)}` : ""}`);
       }
     } catch (e) {
@@ -278,7 +305,7 @@ function er(input: TableInput): Generated {
   }
 
   const blocks = entities_.entries().flatMap((e) => {
-    const name = `  ${e.id}["${erText(writer, e.line, e.name)}"]`;
+    const name = `  ${e.id}["${erText(writer, e.at, e.name)}"]`;
     const own = attributes.get(e.id);
     return own ? [`${name} {`, ...own, "  }"] : [name];
   });

@@ -140,7 +140,7 @@ export function TableTool({ lang, hasCode, onOpen }: Props) {
             <h2>{m("table.replaced", { count: result.replaced.length })}</h2>
             <ul>
               {result.replaced.slice(0, 50).map((r, i) => (
-                <li key={i}>{m("table.replacedItem", { line: r.line, from: r.from, to: r.to })}</li>
+                <li key={i}>{`${r.table === "relations" ? `${m("table.inRelations")}: ` : ""}${m("table.replacedItem", { line: r.line, column: r.column, from: r.from, to: r.to })}`}</li>
               ))}
             </ul>
           </div>
