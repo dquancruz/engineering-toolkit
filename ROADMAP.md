@@ -13,12 +13,16 @@ One phase = one branch = one PR. Status is updated in the PR that finishes each 
 | 4 | **Agent profile**: `engkit init --profile agent` (reviewer and builder subagents, Claude Code permissions and a Node guard hook, settings merge with diff), `engkit agent test-guards`, `protectedBranches` | Done |
 | 5 | **Git workflow and checklists**: `engkit branch`, `engkit changelog`, `engkit env`; code review, DoD, system design and threat model checklists, `engkit prompt --checklist`, `ask` rules for git commands that discard work, `CHANGELOG.md` | Done |
 | 6 | **Legacy profile**: `engkit init --profile legacy`, business rules, acceptance tests, defects and sources register, `engkit new rn\|pa\|defecto`, hashed code evidence with `engkit evidence`, rule index, extra `check` rules | Done |
-| 7 | **Requirements and rebuild profiles**: non-functional requirements and constraints, rebuild plan with vertical slices, strangler and data plans, `engkit requirements`, `engkit testplan` | In review |
-| 8 | **Utilities web app** (`web/`): JSON formatter, type converter, regex tester, JWT decoder (static site) | Planned |
+| 7 | **Requirements and rebuild profiles**: non-functional requirements and constraints, rebuild plan with vertical slices, strangler and data plans, `engkit requirements`, `engkit testplan` | Done |
+| 8 | **Utilities web app** (`web/`): JSON formatter and type generator, format converter, regex tester, JWT decoder (static site, nothing leaves the browser) | In review |
 | 9 | **AI features**: `engkit ai commit`, `engkit ai pr` (needs `ANTHROPIC_API_KEY`) | Planned |
 | 10 | **The rest**: `engkit mock`, `engkit scaffold` | Planned |
 
 ## Decisions
+
+- `web/` is a separate package (Vite, Preact, TypeScript) with its own lockfile: no workspaces, nothing shared with the CLI, nothing in the npm tarball. Its logic is in `web/src/core` should the CLI need it later.
+- Web privacy is enforced and tested: a Content-Security-Policy with `connect-src 'none'`, a reviewed scan of the build and browser tests. Libraries with network or `eval` code are avoided (`csv-parse` instead of `papaparse`).
+- The JWT tool only decodes; it does not verify signatures.
 
 - `requirements` is an independent profile (new systems need it without legacy); `rebuild` adds it and `legacy`.
 - The sources register is shared by `legacy` and `requirements` (`sources.doc` in `.engkit.json`). `legacy.sources` from 0.6.0 is still read and `engkit init` moves it.

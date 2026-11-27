@@ -1,5 +1,15 @@
 # Changelog
 
+## [v0.8.0] - 2026-11-26
+
+### Features
+
+- **web:** add browser utilities for JSON, format conversion, regex and JWT (ca0cc29)
+
+### Fixes
+
+- **web:** warn when a regex evaluation is slow, since Safari gives up silently (98b165c)
+
 ## [v0.7.0] - 2026-11-26
 
 ### Features

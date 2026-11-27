@@ -39,3 +39,26 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npx vitest run test/agent test/branch test/changelog test/env test/legacy test/rebuild test/sources-compat.test.ts
+
+  # The web app is a separate package: its own lockfile, unit tests, build checks and browser tests.
+  web:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+      - run: npm run test:build # reviewed network scan and size budget
+      - run: npx playwright install --with-deps chromium firefox webkit
+      - run: npm run test:e2e # behaviour, privacy and accessibility
+      - run: npm audit --audit-level=moderate
+
